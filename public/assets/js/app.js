@@ -1132,9 +1132,9 @@
     const pts = (place) => pl.points[place];
     return `<div class="card pad stack placements">
       <div class="spread"><h3>Final placements</h3>${pl.confirmed ? '<span class="tag done">Confirmed</span>' : '<span class="tag yellow">Draft</span>'}</div>
-      ${pl.confirmed ? '' : `<p class="small" style="margin:0"><b>Not confirmed yet</b>, so nobody has RATA points from this tournament.${pl.suggested ? ' The places below are suggested from the session leaderboard: check them and press Confirm.' : ''}</p>`}
+      ${pl.confirmed ? '' : `<p class="small" style="margin:0"><b>Not confirmed yet</b>, so nobody has RATA points from this tournament.${pl.suggested ? (s.format.startsWith('singles') ? ' When you mark the session Completed, places are given automatically from the final session leaderboard. Only open this to change them.' : ' The places below are suggested from the session leaderboard: check them and press Confirm.') : ''}</p>`}
       ${pl.confirmed ? `<ol class="place-list">${pl.rows.map((r) => `<li><span class="place-badge ${r.place}">${esc(r.label)}</span><a class="person" href="#/members/${r.id}">${avatar(r, 'dark')}${esc(r.name)}</a><b>+${r.points}</b></li>`).join('')}</ol>` : ''}
-      ${edit ? `<details ${pl.confirmed ? '' : 'open'}><summary class="small">${pl.confirmed ? 'Change placements' : 'Set placements (admin)'}</summary>
+      ${edit ? `<details ${pl.confirmed || (pl.suggested && s.format.startsWith('singles')) ? '' : 'open'}><summary class="small">${pl.confirmed ? 'Change placements' : 'Set placements (admin)'}</summary>
         <div class="stack" style="gap:8px;margin-top:10px">${d.players.map((p) => `<label class="row place-row">${avatar(p, 'dark')}<span>${esc(p.name)}</span>
           <select class="input" data-place="${p.id}">${Object.entries(pl.labels).map(([k, v]) => `<option value="${k}" ${(current[p.id] || 'participant') === k ? 'selected' : ''}>${esc(v)} · ${pts(k)}</option>`).join('')}</select></label>`).join('')}</div>
         <p class="hint">${s.format.startsWith('singles') ? 'One player per place.' : 'Give both partners the same place; each gets the full points.'} With no 3rd-place match, use Joint 3rd for both semi-finalists. Everyone else gets Participation.</p>

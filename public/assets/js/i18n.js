@@ -146,6 +146,7 @@
     'Member': 'Member', 'Won': 'Menang', 'Lost': 'Kalah', 'Draw': 'Seri', 'pts': 'poin',
 
     // Placements and tournaments
+    ', so nobody has RATA points from this tournament. When you mark the session Completed, places are given automatically from the final session leaderboard. Only open this to change them.': ', jadi belum ada yang dapat poin RATA dari turnamen ini. Saat sesi ditandai Selesai, peringkat diisi otomatis dari leaderboard sesi. Buka bagian ini hanya kalau mau mengubahnya.',
     'Final placements': 'Peringkat akhir', 'Confirm placements': 'Konfirmasi peringkat', 'Change placements': 'Ubah peringkat', 'Save draft': 'Simpan draf', 'Set placements (admin)': 'Atur peringkat (admin)',
     'Set placements from the leaderboard': 'Atur peringkat dari leaderboard', 'Draft saved. No points until you confirm.': 'Draf tersimpan. Belum ada poin sampai dikonfirmasi.', 'Draft saved.': 'Draf tersimpan.',
     'Placements confirmed. RATA points given.': 'Peringkat dikonfirmasi. Poin RATA diberikan.', 'Confirm the final placements? Players get their RATA points and a notification.': 'Konfirmasi peringkat akhir? Pemain mendapat poin RATA dan notifikasi.',
