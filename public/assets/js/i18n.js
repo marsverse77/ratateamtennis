@@ -13,7 +13,7 @@
     'Rankings': 'Peringkat', 'Main': 'Utama', 'Tabs': 'Tab', 'Log in': 'Masuk', 'Log out': 'Keluar', 'Join': 'Gabung', 'the club': 'klub',
     'Join the club': 'Gabung klub', 'Join now': 'Gabung sekarang', 'My account': 'Akun saya', 'Activity': 'Aktivitas', 'Approvals': 'Persetujuan',
     'Finance': 'Keuangan', '+ New session': '+ Sesi baru', 'Member activity': 'Aktivitas member', 'Loading…': 'Memuat…',
-    'Bali · Tennis community': 'Bali · Komunitas tenis', 'Page not found': 'Halaman tidak ditemukan', 'Go home': 'Ke beranda', 'Hmm.': 'Hmm.',
+    'Bali · Tennis Academy': 'Bali · Tennis Academy', 'Page not found': 'Halaman tidak ditemukan', 'Go home': 'Ke beranda', 'Hmm.': 'Hmm.',
     'Network error. Check your connection.': 'Gangguan jaringan. Cek koneksi kamu.', 'Logged in.': 'Berhasil masuk.', 'Logged out.': 'Berhasil keluar.',
     'Welcome back': 'Selamat datang kembali', 'New here?': 'Baru di sini?', 'Create one →': 'Buat akun →',
 

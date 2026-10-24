@@ -505,7 +505,7 @@
       <section class="wrap" style="padding-top:0;padding-bottom:0">
         <div class="hero">
           <div class="hero-copy">
-            <div class="eyebrow">Bali · Tennis community</div>
+            <div class="eyebrow">Bali · Tennis Academy</div>
             ${LOGO.replace('class="logo"', 'class="logo hero-word"')}
             <h1>Play. Train.<br>Compete.</h1>
             <p class="lead">Your next match starts here.</p>
