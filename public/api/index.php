@@ -114,6 +114,8 @@ function dispatch(string $method, array $p): array
         'POST hero' => hero_add(),
         'POST hero/delete' => hero_delete(),
         'POST hero/order' => hero_order(),
+        'POST team-photo' => team_photo_set(),
+        'POST team-photo/delete' => team_photo_reset(),
         'GET activity' => activity_list(),
         'GET sessions/:id/chat' => session_chat($id),
         'POST sessions/:id/chat' => session_chat_post($id),
@@ -264,6 +266,7 @@ function home(): array
     $my = my_registrations();
     return [
         'slides' => hero_slides(),
+        'team_photo' => team_photo(),
         'upcoming' => array_map('session_out', $upcoming),
         'live' => live()['matches'],
         'leaderboard' => array_slice(overall_standings(), 0, 5),
@@ -1816,6 +1819,41 @@ function hero_order(): array
         q('UPDATE hero_slides SET sort = ? WHERE id = ?', [$i + 1, (int) $id]);
     }
     return ['slides' => hero_slides()];
+}
+
+/** The homepage "Meet the members" photo set by an admin, or null for the built-in one. */
+function team_photo(): ?string
+{
+    $file = q("SELECT v FROM meta WHERE k = 'team_photo'")->fetchColumn();
+    return $file ? HERO_URL . '/' . $file : null;
+}
+
+/** Multipart field "photo": an admin replaces the homepage "Meet the members" photo. */
+function team_photo_set(): array
+{
+    require_admin();
+    $file = save_image(upload_file('photo'), HERO_DIR, 'team', 1600);
+    $old = q("SELECT v FROM meta WHERE k = 'team_photo'")->fetchColumn();
+    q("DELETE FROM meta WHERE k = 'team_photo'");
+    q("INSERT INTO meta (k, v) VALUES ('team_photo', ?)", [$file]);
+    if ($old) {
+        @unlink(HERO_DIR . '/' . basename($old));
+    }
+    audit('team_photo', 'hero', 0, $old ? ['file' => $old] : null, ['file' => $file]);
+    return ['team_photo' => team_photo()];
+}
+
+/** An admin goes back to the built-in "Meet the members" photo. */
+function team_photo_reset(): array
+{
+    require_admin();
+    $old = q("SELECT v FROM meta WHERE k = 'team_photo'")->fetchColumn();
+    if ($old) {
+        q("DELETE FROM meta WHERE k = 'team_photo'");
+        @unlink(HERO_DIR . '/' . basename($old));
+        audit('team_photo', 'hero', 0, ['file' => $old], null);
+    }
+    return ['team_photo' => null];
 }
 
 /** Multipart field "image": an admin uploads a photo for a post; returns its URL. */

@@ -18,6 +18,7 @@
     'Welcome back': 'Selamat datang kembali', 'New here?': 'Baru di sini?', 'Create one →': 'Buat akun →',
 
     // Home
+    'Change photo': 'Ganti foto', 'Reset': 'Reset', 'Photo updated.': 'Foto diperbarui.', 'Go back to the original photo?': 'Kembali ke foto awal?',
     'Quality': 'Latihan', 'training': 'berkualitas', 'Real': 'Kompetisi', 'competition': 'sungguhan', 'Total RATA points': 'Total poin RATA',
     'Play session': 'Play session', 'Internal tournament': 'Turnamen internal', 'External tournament': 'Turnamen eksternal', 'Coaching session': 'Sesi coaching', 'Hitting session': 'Hitting session',
     'Good game.': 'Good game.', 'Good people.': 'Good people.', 'Good energy.': 'Good energy.', 'Pick a session, register, and play.': 'Pilih sesi, daftar, lalu main.',

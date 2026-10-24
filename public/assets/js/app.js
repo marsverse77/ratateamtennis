@@ -549,7 +549,9 @@
             <div style="margin-top:12px"><a class="link small" href="#/leaderboard">Full rankings →</a></div>
           </div>
           <div class="card members-strip">
-            <div class="photo"></div>
+            <div class="photo" id="team-photo" ${d.team_photo ? `style="background-image:url('${esc(thumb(d.team_photo, 720))}')"` : ''}>
+              ${isAdmin() ? `<div class="team-edit"><label class="btn xs">Change photo<input type="file" accept="image/*" hidden id="team-file"></label>${d.team_photo ? '<button class="btn xs ghost" data-act="team-reset">Reset</button>' : ''}</div>` : ''}
+            </div>
             <a class="link" href="#/members" style="color:var(--ink)">Meet the members →</a>
             <div class="avatars">${d.members.map((m) => `<a href="#/members/${m.id}" title="${esc(m.name)}">${avatar(m)}</a>`).join('')}
               ${d.member_count > d.members.length ? `<span class="avatar">+${d.member_count - d.members.length}</span>` : ''}</div>
@@ -557,6 +559,28 @@
         </div>
       </div>`;
     drawPushBox(document.getElementById('push-prompt'), true);
+    // Admin: replace the "Meet the members" photo, or go back to the built-in one.
+    const teamFile = document.getElementById('team-file');
+    if (teamFile) {
+      teamFile.onchange = async (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        const fd = new FormData();
+        fd.append('photo', await shrinkImage(f), 'team.jpg');
+        try {
+          const res = await fetch('api/index.php?r=team-photo', { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'bcs' }, body: fd });
+          let data = {};
+          try { data = await res.json(); } catch (err) { /* non-JSON */ }
+          if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
+          toast('Photo updated.');
+          render();
+        } catch (err) { toast(err.message, true); }
+      };
+      document.querySelector('[data-act="team-reset"]')?.addEventListener('click', async () => {
+        if (!confirm('Go back to the original photo?')) return;
+        try { await api('team-photo/delete', {}); render(); } catch (err) { toast(err.message, true); }
+      });
+    }
     const heroEl = document.getElementById('hero-photo');
     startHero(heroEl);
     heroEl.addEventListener('click', (e) => {

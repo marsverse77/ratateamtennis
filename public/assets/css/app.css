@@ -1150,3 +1150,7 @@ body.scoring .site-foot, body.bcast .site-foot { display: none; }
 img.logo { display: block; max-width: none; }
 .empty img.logo { margin: 0 auto 12px; }
 @media (max-width: 760px) { .brand .logo-team { font-size: 28px; } }
+.members-strip .photo { position: relative; background-size: cover; background-position: center; }
+.team-edit { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+.team-edit .btn { cursor: pointer; }
+.team-edit .btn.ghost { background: rgba(0,0,0,.6); }
