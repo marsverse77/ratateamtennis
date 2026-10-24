@@ -112,11 +112,23 @@ function history_from_matches(array $players, array $matches): PairHistory
             $byRound[(int) $m['round']][$p] = true;
         }
     }
+    $seen = [];
+    foreach ($byRound as $playing) {
+        $seen += $playing;
+    }
     foreach ($byRound as $r => $playing) {
         foreach ($players as $p) {
             if (!isset($playing[$p])) {
                 $h->addBye($p, $r);
             }
+        }
+    }
+    // Someone who joined late is not owed every round they missed: they get one sit-out more than the
+    // most anyone else has, so they play next and then rotate like everyone else.
+    $cap = 1 + max([0, ...array_map(fn($p) => $h->byes[$p] ?? 0, array_keys($seen))]);
+    foreach ($players as $p) {
+        if (!isset($seen[$p]) && ($h->byes[$p] ?? 0) > $cap) {
+            $h->byes[$p] = $cap;
         }
     }
     return $h;

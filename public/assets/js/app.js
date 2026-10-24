@@ -761,6 +761,10 @@
           if (d.matches.length && !confirm('Replace the current schedule with a new one?')) return;
           return run(() => api(`sessions/${id}/generate`, { mode: 'replace', rounds, notify: true }), 'Schedule generated.');
         }
+        if (a === 'rest') {
+          if (!confirm('Redo every round that has not started, with the current player list? Played and live matches stay.')) return;
+          return run(() => api(`sessions/${id}/generate`, { mode: 'rest', notify: true }), 'Remaining rounds rescheduled.');
+        }
         if (a === 'next-round') return run(() => api(`sessions/${id}/generate`, { mode: 'next', rounds: 1, notify: true }), 'Round added.');
         if (a === 'clear') { if (confirm('Clear the whole schedule?')) return run(() => api(`sessions/${id}/generate`, { mode: 'clear' }), 'Schedule cleared.'); return; }
         if (a === 'status') {
@@ -1185,7 +1189,7 @@
         <div class="row wrap-ok">
           <label class="row small">Rounds <input class="input" id="gen-rounds" type="number" min="1" max="50" value="${s.format === 'mexicano' ? 1 : suggestedRounds(s)}" style="width:80px"></label>
           <button class="btn sm" data-act="generate">${hasMatches ? 'Regenerate' : 'Generate schedule'} <span class="arrow"></span></button>
-          ${hasMatches ? `<button class="btn sm ghost" data-act="next-round">+ Add ${s.format === 'mexicano' ? 'next Mexicano' : 'a'} round</button><button class="btn sm ghost" data-act="clear">Clear</button>` : ''}
+          ${hasMatches ? `<button class="btn sm ghost" data-act="next-round">+ Add ${s.format === 'mexicano' ? 'next Mexicano' : 'a'} round</button><button class="btn sm ghost" data-act="rest" title="Someone arrived late or left? Add or remove them first, then redo the rounds that haven't started. Played and live matches stay as they are.">Reschedule rounds not started</button><button class="btn sm ghost" data-act="clear">Clear</button>` : ''}
         </div>
         ${s.format === 'singles_gender' ? '<div class="hint" style="margin-top:6px">Men only play men and women only play women. Courts are shared each round so both groups play about as often. Every player needs their gender set.</div>' : ''}
         ${s.format === 'mexicano' ? '<div class="hint" style="margin-top:6px">Mexicano: round 1 is random. When a round is done, add the next round and players are paired by the current standings.</div>' : ''}
