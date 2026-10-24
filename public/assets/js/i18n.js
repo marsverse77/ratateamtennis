@@ -75,6 +75,7 @@
     'Redo every round that has not started, with the current player list? Played and live matches stay.': 'Buat ulang semua ronde yang belum mulai dengan daftar pemain sekarang? Match yang sudah dimainkan atau sedang live tetap.',
     'Remaining rounds rescheduled.': 'Ronde sisanya sudah dijadwal ulang.',
     "Someone arrived late or left? Add or remove them first, then redo the rounds that haven't started. Played and live matches stay as they are.": 'Ada yang datang telat atau pulang? Tambah atau hapus dulu pemainnya, lalu buat ulang ronde yang belum mulai. Match yang sudah dimainkan atau live tetap.',
+    'Delete round': 'Hapus ronde', 'Round deleted.': 'Ronde dihapus.',
     'Men': 'Pria', 'Women': 'Wanita', 'No gender set': 'Gender belum diisi',
     'Singles · Americano · Men vs men, women vs women': 'Single · Americano · Pria vs pria, wanita vs wanita',
     'Mexicano: round 1 is random. When a round is done, add the next round and players are paired by the current standings.': 'Mexicano: ronde 1 acak. Setelah satu ronde selesai, tambahkan ronde berikutnya dan pemain dipasangkan sesuai klasemen.',

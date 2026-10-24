@@ -657,7 +657,7 @@
               const sitting = d.players.filter((p) => !playing.has(p.id));
               return `
               <div class="round-head"><span class="tag yellow">Round ${r}</span><span class="small muted">${esc(rounds[r][0].start_time)}${sitting.length ? ' · Sitting out: ' + sitting.map((p) => esc(p.name)).join(', ') : ''}</span>
-                ${isAdmin() && s.status !== 'completed' ? `<button class="link-btn" data-act="round-time" data-round="${r}" data-time="${esc(rounds[r][0].start_time)}">Edit time</button>` : ''}</div>
+                ${isAdmin() && s.status !== 'completed' ? `<button class="link-btn" data-act="round-time" data-round="${r}" data-time="${esc(rounds[r][0].start_time)}">Edit time</button>${rounds[r].every(unplayed) ? `<button class="link-btn" data-act="round-delete" data-round="${r}">Delete round</button>` : ''}` : ''}</div>
               <table class="sched"><tbody>${rounds[r].map((m) => {
                 const mine = [...m.team_a, ...m.team_b].some((p) => p.id === myId);
                 const sc = m.status === 'scheduled' ? '<span class="vs-badge">vs</span>' : `<span class="score-badge ${m.status === 'live' ? 'live' : ''}">${scoreText(m)}</span>`;
@@ -804,6 +804,10 @@
         if (a === 'placement') {
           return run(() => api(`matches/${act.dataset.id}/placement`, { placement: act.dataset.on === '1' }),
             act.dataset.on === '1' ? 'Marked as a placement final: no RATA points.' : 'Marked as a regular match.');
+        }
+        if (a === 'round-delete') {
+          if (!confirm(`Delete round ${act.dataset.round}? Later rounds move up one.`)) return;
+          return run(() => api(`sessions/${id}/round-delete`, { round: Number(act.dataset.round) }), 'Round deleted.');
         }
         if (a === 'round-time') return roundTimeModal(id, Number(act.dataset.round), act.dataset.time, (fresh) => { d = fresh; draw(); });
         if (a === 'delete') {
