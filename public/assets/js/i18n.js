@@ -69,6 +69,9 @@
     'Schedule': 'Jadwal', 'Generate schedule': 'Buat jadwal', 'Regenerate': 'Buat ulang', 'Schedule generated.': 'Jadwal dibuat.', 'Schedule updated.': 'Jadwal diperbarui.',
     'Schedule cleared.': 'Jadwal dihapus.', 'Clear': 'Hapus', 'Clear the whole schedule?': 'Hapus seluruh jadwal?', 'Replace the current schedule with a new one?': 'Ganti jadwal sekarang dengan yang baru?',
     'The match schedule will appear here once the admin generates it.': 'Jadwal pertandingan muncul di sini setelah admin membuatnya.', 'New round': 'Ronde baru', '+ Add a round': '+ Tambah ronde', 'Round added.': 'Ronde ditambahkan.',
+    'Men only play men and women only play women. Courts are shared each round so both groups play about as often. Every player needs their gender set.': 'Pria hanya lawan pria dan wanita hanya lawan wanita. Lapangan dibagi tiap ronde supaya kedua grup main kurang lebih sama sering. Setiap pemain harus sudah diisi gendernya.',
+    'Men': 'Pria', 'Women': 'Wanita', 'No gender set': 'Gender belum diisi',
+    'Singles · Americano · Men vs men, women vs women': 'Single · Americano · Pria vs pria, wanita vs wanita',
     'Mexicano: round 1 is random. When a round is done, add the next round and players are paired by the current standings.': 'Mexicano: ronde 1 acak. Setelah satu ronde selesai, tambahkan ronde berikutnya dan pemain dipasangkan sesuai klasemen.',
     'Keeps the same gap between rounds.': 'Jarak antar ronde tetap sama.', 'Move the later rounds too': 'Geser juga ronde berikutnya', 'Keep it where it is': 'Biarkan di tempatnya',
     'Edit time': 'Ubah jam', 'Swap this match\'s time slot with': 'Tukar jam pertandingan ini dengan', 'Add a match': 'Tambah pertandingan', 'Add match': 'Tambah pertandingan',
@@ -143,6 +146,7 @@
     'Member': 'Member', 'Won': 'Menang', 'Lost': 'Kalah', 'Draw': 'Seri', 'pts': 'poin',
 
     // Placements and tournaments
+    ', so nobody has RATA points from this tournament. When you mark the session Completed, places are given automatically from the final session leaderboard. Only open this to change them.': ', jadi belum ada yang dapat poin RATA dari turnamen ini. Saat sesi ditandai Selesai, peringkat diisi otomatis dari leaderboard sesi. Buka bagian ini hanya kalau mau mengubahnya.',
     'Final placements': 'Peringkat akhir', 'Confirm placements': 'Konfirmasi peringkat', 'Change placements': 'Ubah peringkat', 'Save draft': 'Simpan draf', 'Set placements (admin)': 'Atur peringkat (admin)',
     'Set placements from the leaderboard': 'Atur peringkat dari leaderboard', 'Draft saved. No points until you confirm.': 'Draf tersimpan. Belum ada poin sampai dikonfirmasi.', 'Draft saved.': 'Draf tersimpan.',
     'Placements confirmed. RATA points given.': 'Peringkat dikonfirmasi. Poin RATA diberikan.', 'Confirm the final placements? Players get their RATA points and a notification.': 'Konfirmasi peringkat akhir? Pemain mendapat poin RATA dan notifikasi.',

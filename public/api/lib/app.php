@@ -432,6 +432,21 @@ function session_standings(int $sid, bool $includeLive = true): array
             unset($r);
         }
     }
+    if (split_gender($sess['format'])) {
+        // Men and women never meet, so each gets its own ranking: men first, then women.
+        $gender = array_column(rows('SELECT id, gender FROM users WHERE id IN (' . implode(',', array_map('intval', $players ?: [0])) . ')'), 'gender', 'id');
+        $split = ['male' => [], 'female' => [], '' => []];
+        foreach ($ranked as $r) {
+            $g = $gender[$r['id']] ?? '';
+            $split[isset($split[$g]) ? $g : ''][] = $r;
+        }
+        $ranked = [];
+        foreach ($split as $g => $list) {
+            foreach ($list as $i => $r) {
+                $ranked[] = ['rank' => $i + 1, 'gender' => $g] + $r;
+            }
+        }
+    }
     return with_photos($ranked);
 }
 

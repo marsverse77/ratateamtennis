@@ -208,6 +208,15 @@
     return 'mabar' in rows[0] ? pointsBoard(rows, opts.cat || 'all') : sessionBoard(rows, opts);
   }
 
+  // Men vs men, women vs women sessions: one leaderboard per gender.
+  function sessionBoards(rows, opts = {}) {
+    if (!rows.some((r) => r.gender !== undefined)) return boardTable(rows, opts);
+    return [['male', 'Men'], ['female', 'Women'], ['', 'No gender set']].map(([g, label]) => {
+      const list = rows.filter((r) => (r.gender || '') === g);
+      return list.length ? `<h4 style="margin:12px 0 6px">${label}</h4>${boardTable(list, opts)}` : '';
+    }).join('');
+  }
+
   const boardRow = (r, me, cells) => `<tr class="${r.rank === 1 && (r.points > 0 || r.final) ? 'top' : ''} ${r.id === me ? 'me' : ''}">
     <td class="num">${r.rank}</td>
     <td><a class="person" href="#/members/${r.id}">${avatar(r, 'dark')}${esc(r.name)}</a>${r.final ? ` <span class="final-tag ${r.final}" title="${r.final === 'won' ? 'Won' : 'Lost'} the placement final">${r.final === 'won' ? '🏆 Final' : 'Final'}</span>` : ''}</td>
@@ -648,7 +657,7 @@
             ${externalSessionCard(d)}
             ${!s.with_games ? '' : `<div class="card pad">
               <div class="spread"><h3>Session leaderboard</h3>${s.status === 'live' ? '<span class="tag live">Live</span>' : ''}</div>
-              ${boardTable(d.standings, { compact: true, empty: 'No players yet.' })}
+              ${sessionBoards(d.standings, { compact: true, empty: 'No players yet.' })}
             </div>`}
             <div class="card pad">
               <h3 style="margin-bottom:12px">Registered players (${d.players.length})</h3>
@@ -1123,9 +1132,9 @@
     const pts = (place) => pl.points[place];
     return `<div class="card pad stack placements">
       <div class="spread"><h3>Final placements</h3>${pl.confirmed ? '<span class="tag done">Confirmed</span>' : '<span class="tag yellow">Draft</span>'}</div>
-      ${pl.confirmed ? '' : `<p class="small" style="margin:0"><b>Not confirmed yet</b>, so nobody has RATA points from this tournament.${pl.suggested ? ' The places below are suggested from the session leaderboard: check them and press Confirm.' : ''}</p>`}
+      ${pl.confirmed ? '' : `<p class="small" style="margin:0"><b>Not confirmed yet</b>, so nobody has RATA points from this tournament.${pl.suggested ? (s.format.startsWith('singles') ? ' When you mark the session Completed, places are given automatically from the final session leaderboard. Only open this to change them.' : ' The places below are suggested from the session leaderboard: check them and press Confirm.') : ''}</p>`}
       ${pl.confirmed ? `<ol class="place-list">${pl.rows.map((r) => `<li><span class="place-badge ${r.place}">${esc(r.label)}</span><a class="person" href="#/members/${r.id}">${avatar(r, 'dark')}${esc(r.name)}</a><b>+${r.points}</b></li>`).join('')}</ol>` : ''}
-      ${edit ? `<details ${pl.confirmed ? '' : 'open'}><summary class="small">${pl.confirmed ? 'Change placements' : 'Set placements (admin)'}</summary>
+      ${edit ? `<details ${pl.confirmed || (pl.suggested && s.format.startsWith('singles')) ? '' : 'open'}><summary class="small">${pl.confirmed ? 'Change placements' : 'Set placements (admin)'}</summary>
         <div class="stack" style="gap:8px;margin-top:10px">${d.players.map((p) => `<label class="row place-row">${avatar(p, 'dark')}<span>${esc(p.name)}</span>
           <select class="input" data-place="${p.id}">${Object.entries(pl.labels).map(([k, v]) => `<option value="${k}" ${(current[p.id] || 'participant') === k ? 'selected' : ''}>${esc(v)} · ${pts(k)}</option>`).join('')}</select></label>`).join('')}</div>
         <p class="hint">${s.format.startsWith('singles') ? 'One player per place.' : 'Give both partners the same place; each gets the full points.'} With no 3rd-place match, use Joint 3rd for both semi-finalists. Everyone else gets Participation.</p>
@@ -1154,6 +1163,7 @@
           <button class="btn sm" data-act="generate">${hasMatches ? 'Regenerate' : 'Generate schedule'} <span class="arrow"></span></button>
           ${hasMatches ? `<button class="btn sm ghost" data-act="next-round">+ Add ${s.format === 'mexicano' ? 'next Mexicano' : 'a'} round</button><button class="btn sm ghost" data-act="clear">Clear</button>` : ''}
         </div>
+        ${s.format === 'singles_gender' ? '<div class="hint" style="margin-top:6px">Men only play men and women only play women. Courts are shared each round so both groups play about as often. Every player needs their gender set.</div>' : ''}
         ${s.format === 'mexicano' ? '<div class="hint" style="margin-top:6px">Mexicano: round 1 is random. When a round is done, add the next round and players are paired by the current standings.</div>' : ''}
       </div>`}
       ${!s.with_games ? '' : streamLinks(s)}
@@ -1381,7 +1391,7 @@
                 ${x.next.length ? `<h3 style="margin-top:24px">Up next</h3><div class="live-grid">${x.next.map((m) => scoreboard(m, { controls: true })).join('')}</div>` : ''}
                 ${x.recent.length ? `<h3 style="margin-top:24px">Just finished</h3><div class="live-grid">${x.recent.map((m) => scoreboard(m)).join('')}</div>` : ''}
               </div>
-              <aside class="card pad"><h3>Session leaderboard</h3>${boardTable(x.standings, { compact: true, empty: 'No players yet.' })}</aside>
+              <aside class="card pad"><h3>Session leaderboard</h3>${sessionBoards(x.standings, { compact: true, empty: 'No players yet.' })}</aside>
             </div>
           </section>`).join('')
         : `<div class="card empty">${LOGO}<h2>Nothing live right now</h2><p>When a session starts, live scores show up here for everyone.</p><a class="btn dark" href="#/sessions">See sessions</a></div>`}

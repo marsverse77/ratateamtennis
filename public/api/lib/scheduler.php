@@ -5,6 +5,8 @@
 // mexicano:  doubles, round 1 random, each next round pairs players by current standings
 //            (1st + 3rd vs 2nd + 4th, and so on down the table).
 // singles:   one vs one, opponents rotate every round, all rounds generated up front.
+// singles_gender: singles americano where men only play men and women only play women, in one
+//            session. Courts are shared out each round so both groups get a fair number of matches.
 //
 // Each round fills as many courts as the player count allows. Extra players sit out,
 // and the sit-outs rotate so everyone gets the same number of byes (+/- 1).
@@ -14,7 +16,14 @@ const FORMATS = [
     'mexicano' => ['label' => 'Doubles · Mexicano', 'team' => 2],
     'singles_americano' => ['label' => 'Singles · Americano', 'team' => 1],
     'singles' => ['label' => 'Singles · Round robin', 'team' => 1],
+    'singles_gender' => ['label' => 'Singles · Americano · Men vs men, women vs women', 'team' => 1, 'split' => true],
 ];
+
+/** True when the format keeps men and women apart (own matches, own leaderboard). */
+function split_gender(string $format): bool
+{
+    return !empty(FORMATS[$format]['split']);
+}
 
 function team_size(string $format): int
 {
@@ -194,6 +203,100 @@ function ranked_round(array $rankedActive): array
     return $matches;
 }
 
+/** Picks sit-outs and matches for one round of a rotating format. Returns [sitters, matches]. */
+function fair_round(array $players, int $sitCount, int $team, PairHistory $h, int $round): array
+{
+    // Who sits out changes who can meet, so try several fair sit-out sets.
+    $best = null;
+    for ($t = 0; $t < ($sitCount > 0 ? 16 : 1); $t++) {
+        $try = pick_sitters($players, $sitCount, $h, $round, $t < 4);
+        [$ms, $cost] = rotation_round(array_values(array_diff($players, $try)), $team, $h);
+        foreach ($try as $p) {
+            $cost += ($h->lastBye[$p] ?? -9) === $round - 1 ? 5 : 0; // sitting out twice in a row
+        }
+        if ($best === null || $cost < $best[2]) {
+            $best = [$try, $ms, $cost];
+        }
+    }
+    return [$best[0], $best[1]];
+}
+
+/**
+ * Singles by gender: each group plays its own americano. Each round the courts go one at a time to the
+ * group whose players have played the fewest matches on average, so a bigger group gets more courts.
+ * $groups = [gender => [user ids]], every group has at least 2 players.
+ */
+function generate_split_rounds(array $s, array $groups, array $existing, int $howMany): array
+{
+    $players = array_merge(...array_values($groups));
+    $h = history_from_matches($players, $existing);
+    $played = array_fill_keys(array_keys($groups), 0);
+    $groupOf = [];
+    foreach ($groups as $g => $ids) {
+        foreach ($ids as $p) {
+            $groupOf[$p] = $g;
+        }
+    }
+    $lastRound = 0;
+    foreach ($existing as $m) {
+        $lastRound = max($lastRound, (int) $m['round']);
+        foreach ([$m['a1'], $m['b1']] as $p) {
+            if (isset($groupOf[(int) $p])) {
+                $played[$groupOf[(int) $p]]++;
+            }
+        }
+    }
+    // Average matches per player in group $g once this round's courts so far are played.
+    $load = function ($g, $alloc) use (&$played, $groups) {
+        return ($played[$g] + 2 * $alloc[$g]) / count($groups[$g]);
+    };
+    $out = [];
+    for ($i = 1; $i <= $howMany; $i++) {
+        $round = $lastRound + $i;
+        $alloc = array_fill_keys(array_keys($groups), 0);
+        for ($c = 0; $c < (int) $s['courts']; $c++) {
+            $pick = null;
+            foreach ($groups as $g => $ids) {
+                if ($alloc[$g] >= intdiv(count($ids), 2)) {
+                    continue;
+                }
+                if ($pick === null) {
+                    $pick = $g;
+                    continue;
+                }
+                $d = $load($g, $alloc) - $load($pick, $alloc);
+                if ($d < -1e-9 || (abs($d) < 1e-9 && count($ids) > count($groups[$pick]))) {
+                    $pick = $g;
+                }
+            }
+            if ($pick === null) {
+                break;
+            }
+            $alloc[$pick]++;
+        }
+        $matches = [];
+        foreach ($groups as $g => $ids) {
+            if ($alloc[$g] === 0) {
+                foreach ($ids as $p) {
+                    $h->addBye($p, $round);
+                }
+                continue;
+            }
+            [$sitters, $ms] = fair_round($ids, count($ids) - 2 * $alloc[$g], 1, $h, $round);
+            foreach ($ms as [$ta, $tb]) {
+                $h->addMatch($ta, $tb);
+                $matches[] = [$ta, $tb];
+            }
+            foreach ($sitters as $p) {
+                $h->addBye($p, $round);
+            }
+            $played[$g] += 2 * $alloc[$g];
+        }
+        $out[$round] = $matches;
+    }
+    return $out;
+}
+
 /**
  * Generates rounds. $existing are match rows already in the schedule (kept), $ranking is the
  * current standings order (user ids), used by mexicano for rounds after the first.
@@ -223,19 +326,7 @@ function generate_rounds(array $s, array $players, array $existing, int $howMany
             usort($active, fn($a, $b) => ($pos[$a] ?? PHP_INT_MAX) <=> ($pos[$b] ?? PHP_INT_MAX));
             $matches = ranked_round($active);
         } else {
-            // Who sits out changes who can meet, so try several fair sit-out sets.
-            $best = null;
-            for ($t = 0; $t < ($sitCount > 0 ? 16 : 1); $t++) {
-                $try = pick_sitters($players, $sitCount, $h, $round, $t < 4);
-                [$ms, $cost] = rotation_round(array_values(array_diff($players, $try)), $team, $h);
-                foreach ($try as $p) {
-                    $cost += ($h->lastBye[$p] ?? -9) === $round - 1 ? 5 : 0; // sitting out twice in a row
-                }
-                if ($best === null || $cost < $best[2]) {
-                    $best = [$try, $ms, $cost];
-                }
-            }
-            [$sitters, $matches] = $best;
+            [$sitters, $matches] = fair_round($players, $sitCount, $team, $h, $round);
         }
         foreach ($matches as [$ta, $tb]) {
             $h->addMatch($ta, $tb);
