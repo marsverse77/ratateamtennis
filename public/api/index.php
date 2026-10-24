@@ -308,8 +308,26 @@ function sessions_list(): array
 
 // ---- sessions ----
 
+/** Numbers the rounds 1, 2, 3… again after a round or a round's last match was removed. */
+function compact_rounds(int $sid): void
+{
+    $n = 0;
+    $moved = false;
+    foreach (array_column(rows('SELECT DISTINCT round FROM matches WHERE session_id = ? ORDER BY round', [$sid]), 'round') as $r) {
+        $n++;
+        if ((int) $r !== $n) {
+            q('UPDATE matches SET round = ? WHERE session_id = ? AND round = ?', [$n, $sid, $r]);
+            $moved = true;
+        }
+    }
+    if ($moved) {
+        q('UPDATE play_sessions SET rounds = ? WHERE id = ?', [$n, $sid]);
+    }
+}
+
 function session_detail(int $id): array
 {
+    compact_rounds($id); // also repairs schedules that got a gap before this existed
     $s = get_session($id);
     $players = session_players($id);
     $matches = rows('SELECT * FROM matches WHERE session_id = ? ORDER BY round, court', [$id]);
