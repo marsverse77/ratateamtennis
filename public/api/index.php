@@ -933,7 +933,9 @@ function session_generate(int $id): array
                 $howMany = 1; // each mexicano round depends on the previous results
             }
             $ranking = array_column(session_standings($id, false), 'id');
-            $rounds = generate_rounds($s, $players, $existing, $howMany, $ranking);
+            $rounds = split_gender($s['format'])
+                ? generate_split_rounds($s, gender_groups($players), $existing, $howMany)
+                : generate_rounds($s, $players, $existing, $howMany, $ranking);
             foreach ($rounds as $r => $matches) {
                 foreach ($matches as $i => [$ta, $tb]) {
                     insert('matches', [
@@ -969,6 +971,36 @@ function session_generate(int $id): array
         );
     }
     return session_detail($id);
+}
+
+/** Players split into [male => ids, female => ids] for a men vs men, women vs women session. */
+function gender_groups(array $players): array
+{
+    $groups = ['male' => [], 'female' => []];
+    $missing = [];
+    $names = names($players);
+    foreach ($players ? rows('SELECT id, gender FROM users WHERE id IN (' . implode(',', array_map('intval', $players)) . ')') : [] as $u) {
+        if (isset($groups[$u['gender']])) {
+            $groups[$u['gender']][] = (int) $u['id'];
+        } else {
+            $missing[] = $names[(int) $u['id']] ?? 'Player';
+        }
+    }
+    if ($missing) {
+        fail(422, 'Set the gender of these players first (Members, edit): ' . implode(', ', $missing) . '.');
+    }
+    foreach (['male' => 'men', 'female' => 'women'] as $g => $label) {
+        if (count($groups[$g]) === 1) {
+            fail(422, "Only one of the players is in the $label group, so they have nobody to play. Add another or remove them.");
+        }
+        if (!$groups[$g]) {
+            unset($groups[$g]);
+        }
+    }
+    if (!$groups) {
+        fail(422, 'Need at least 2 players to generate matches.');
+    }
+    return $groups;
 }
 
 function session_set_status(int $id): array

@@ -33,6 +33,8 @@ function session_placements(int $id): array
     // One player per place in singles, one pair in doubles. Joint 3rd replaces 3rd and 4th.
     $size = team_size($s['format']);
     $count = array_count_values($places);
+    // Men and women each have their own champion, runner-up and so on.
+    $size *= split_gender($s['format']) ? 2 : 1;
     $max = ['champion' => $size, 'runner_up' => $size, 'third' => $size, 'joint_third' => 2 * $size, 'fourth' => $size];
     foreach ($max as $place => $n) {
         if (($count[$place] ?? 0) > $n) {
@@ -77,7 +79,9 @@ function suggested_placements(array $s): array
     $places = ['champion', 'runner_up', 'third', 'fourth'];
     $out = [];
     foreach (session_standings((int) $s['id'], false) as $i => $r) {
-        $out[(int) $r['id']] = $places[intdiv($i, $per)] ?? 'participant';
+        // By gender sessions rank men and women separately, so their rank is the place within the group.
+        $at = split_gender($s['format']) ? $r['rank'] - 1 : $i;
+        $out[(int) $r['id']] = $places[intdiv($at, $per)] ?? 'participant';
     }
     return $out;
 }
