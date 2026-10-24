@@ -34,6 +34,10 @@ jobs:
             "db_pass" => getenv("DB_PASSWORD") ?: "",
           ], true) . ";\n");'
 
+      # Phones keep app.js and app.css cached, so every deploy gets new ?v= stamps in index.html.
+      - name: Stamp asset versions
+        run: sed -i -E "s/\.(js|css)\?v=[0-9a-z]+/.\1?v=${GITHUB_SHA::8}/g" public/index.html
+
       - name: Upload to Hostinger via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
