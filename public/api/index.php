@@ -704,12 +704,22 @@ function delete_proof(?string $file): void
  * Finance recap (admin). Query: from, to (session dates, YYYY-MM-DD), session (id).
  * Lists every registration with a payment, totals split into confirmed and still-to-check.
  */
-/** Query: cat (all | mabar | mini | external), fmt (all | singles | doubles). Overall RATA points leaderboard. */
+/** Query: cat (all | mabar | mini | external), fmt (all | singles | doubles), gender (all | male | female). Overall RATA points leaderboard. */
 function leaderboard(): array
 {
     $cat = in_array($_GET['cat'] ?? '', ['mabar', 'mini', 'external'], true) ? $_GET['cat'] : 'all';
     $fmt = in_array($_GET['fmt'] ?? '', ['singles', 'doubles'], true) ? $_GET['fmt'] : 'all';
-    return ['cat' => $cat, 'fmt' => $fmt, 'rows' => with_profile(ledger_standings($cat, $fmt))];
+    $gender = in_array($_GET['gender'] ?? '', ['male', 'female'], true) ? $_GET['gender'] : 'all';
+    $rows = with_profile(ledger_standings($cat, $fmt));
+    if ($gender !== 'all') {
+        // Ranked among that gender only.
+        $rows = array_values(array_filter($rows, fn($r) => $r['gender'] === $gender));
+        foreach ($rows as $i => &$r) {
+            $r['rank'] = $i + 1;
+        }
+        unset($r);
+    }
+    return ['cat' => $cat, 'fmt' => $fmt, 'gender' => $gender, 'rows' => $rows];
 }
 
 /** Admin marks a match as a placement match (an extra final: no RATA points) or a regular one. Body: {placement: bool} */
