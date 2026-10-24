@@ -1116,7 +1116,7 @@
     const after = s.date <= todayISO();
     return `<div class="card pad stack">
       <h3>External Tournament</h3>
-      <p class="small muted" style="margin:0">RATA points come from the result each player submits after the event (with a photo or link as proof). An admin approves it on the Approvals page.</p>
+      <p class="small muted" style="margin:0">RATA points come from the result each player submits after the event. An admin approves it on the Approvals page.</p>
       ${me && after ? '<button class="btn sm dark" data-act="ext-submit">Submit my result</button>' : me ? '<p class="small" style="margin:0">You can submit your result here once the tournament day comes.</p>' : ''}
     </div>`;
   }
@@ -1548,7 +1548,7 @@
       </div>
       ${opts.noInstagram ? '' : instagramField(m)}
       <label class="field">Coaching club / coach<input class="input" name="coach" maxlength="120" value="${esc(m.coach || '')}"></label>
-      <label class="field">Tournament experience & achievements<textarea class="input" name="experience" maxlength="2000" rows="3" placeholder="Tournament name, year, result. One per line, e.g. Bali Open 2025, semi final">${esc(m.experience || '')}</textarea></label>`;
+      ${m.experience ? `<label class="field">Tournament experience (old notes)<textarea class="input" name="experience" maxlength="2000" rows="3">${esc(m.experience)}</textarea><span class="hint">Written before results could be submitted. Add each one with “+ Submit a result” on the profile so it can earn RATA points, then clear this.</span></label>` : ''}`;
   }
 
   function memberModal(member) {
@@ -1772,7 +1772,58 @@
     if (!list.length && !isMe) return '';
     return `<div><div class="spread" style="margin-bottom:10px"><h2>Tournament results</h2>${isMe ? '<button class="btn sm dark" data-act="ext-new">+ Submit a result</button>' : isAdmin() ? `<button class="btn sm dark" data-act="ext-add-for" data-id="${memberId}">+ Add a result</button>` : ''}</div>
       ${list.length ? `<div class="card pad stack ext-list">${list.map((r) => resultCard(r, { viewer: memberId })).join('')}</div>`
-        : '<div class="card pad empty small">Played an outside tournament? Submit your result with a photo or link as proof. Once an admin approves it, it adds RATA points.</div>'}</div>`;
+        : '<div class="card pad empty small">Played an outside tournament? Submit your result. Once an admin approves it, it adds RATA points.</div>'}</div>`;
+  }
+
+  // The result fields shared by the result modal and the sign-up form (members: who can be picked as partner).
+  function extFields(r, rules, members, opts = {}) {
+    const opt = (v, cur, label) => `<option value="${esc(v)}" ${String(v) === String(cur) ? 'selected' : ''}>${esc(label)}</option>`;
+    return `<label class="field full">Tournament<input class="input" name="tournament" required maxlength="160" value="${esc(r.tournament)}" placeholder="Bali Open 2026"></label>
+      <label class="field">Organizer<input class="input" name="organizer" maxlength="160" value="${esc(r.organizer)}" placeholder="Club, federation…"></label>
+      <label class="field">Date<input class="input" type="date" name="event_date" required max="${todayISO()}" value="${esc(r.event_date)}"></label>
+      <label class="field">Category<select class="input" name="category" required><option value="" disabled ${rules.categories.includes(r.category) ? '' : 'selected'}>Pick one</option>${rules.categories.map((c) => `<option ${c === r.category ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+      <label class="field">Category level<select class="input" name="level">${Object.entries(rules.levels).map(([k, v]) => opt(k, r.level, `${v[0]} (× ${v[1]})`)).join('')}</select></label>
+      <label class="field">Format<select class="input" name="format">${opt('singles', r.format, 'Singles')}${opt('doubles', r.format, 'Doubles')}</select></label>
+      <label class="field">${opts.admin ? 'Result' : 'Your result'}<select class="input" name="placement">${Object.entries(rules.places).map(([k, v]) => opt(k, r.placement, v)).join('')}</select></label>
+      <label class="field">Players or pairs in your category<input class="input" type="number" name="entrants" min="1" max="1024" required value="${esc(r.entrants)}" inputmode="numeric"></label>
+      <label class="field doubles-only">Partner (member)<select class="input" name="partner_id"><option value="">Not a RATA member / no partner</option>${members.map((x) => opt(x.id, r.partner ? r.partner.id : '', x.name)).join('')}</select></label>
+      <label class="field doubles-only">Partner name (if not a member)<input class="input" name="partner_name" maxlength="100" value="${esc(r.partner_name || '')}"></label>
+      <label class="field">Proof photo (optional)<input class="input" type="file" name="proof" accept="image/*"><span class="hint">${r.has_proof ? 'A photo is attached. Pick a new one to replace it.' : 'Draw, results board, certificate…'}</span></label>
+      <label class="field">Or proof link (optional)<input class="input" name="proof_link" maxlength="500" value="${esc(r.proof_link || '')}" placeholder="https://"></label>`;
+  }
+
+  // Values of the named fields inside one result block (the sign-up form can hold several).
+  const extValues = (box) => {
+    const out = {};
+    box.querySelectorAll('[name]').forEach((el) => { if (el.type !== 'file') out[el.name] = el.value; });
+    return out;
+  };
+
+  // Shows the partner fields for doubles and the points the result would add.
+  function extUpdate(box, rules) {
+    const f = extValues(box);
+    box.querySelectorAll('.doubles-only').forEach((el) => el.classList.toggle('hidden', f.format !== 'doubles'));
+    const n = Number(f.entrants);
+    const base = rules.base[f.format][f.placement];
+    const mult = rules.levels[f.level][1];
+    box.querySelector('.ext-estimate').innerHTML = !n ? '' : n < rules.min_entrants
+      ? `Fewer than ${rules.min_entrants} in the category: <b>0 RATA points</b> (the result is still kept on your profile).`
+      : `If approved: <b>${Math.round(base * mult + 1e-9)} RATA points</b> (${base} × ${mult})${f.format === 'doubles' && f.partner_id ? ', and the same for your partner' : ''}.`;
+  }
+
+  // Sends one result block (new, or an update of result id) with its optional proof photo.
+  async function extSend(box, id) {
+    const fd = new FormData();
+    const f = extValues(box);
+    Object.entries(f).forEach(([k, v]) => fd.append(k, v));
+    if (f.format !== 'doubles') { fd.set('partner_id', ''); fd.set('partner_name', ''); }
+    const file = box.querySelector('[name=proof]').files[0];
+    if (file) fd.append('proof', await shrinkImage(file), 'proof.jpg');
+    const res = await fetch('api/index.php?r=external' + (id ? '/' + id : ''), { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'bcs' }, body: fd });
+    let data = {};
+    try { data = await res.json(); } catch (err) { /* non-JSON */ }
+    if (!res.ok) throw new Error(data.error || `Could not save (${res.status})`);
+    return data;
   }
 
   async function externalModal(existing, onSaved, prefill = {}) {
@@ -1786,59 +1837,30 @@
     const adminEdit = existing && isAdmin() && existing.user && existing.user.id !== state.user.id;
     const lead = adminEdit ? `Editing ${esc(existing.user.name)}'s result as an admin. It keeps its status${existing.status === 'approved' ? ' and its RATA points are worked out again' : ''}.`
       : existing && existing.status === 'approved' ? 'Saving sends it back to an admin for approval. Its RATA points are paused until it is approved again.'
-      : prefill.admin ? 'Added by an admin, so it is approved straight away and needs no proof.' : 'An admin checks it before it adds RATA points.';
+      : prefill.admin ? 'Added by an admin, so it is approved straight away.' : 'An admin checks it before it adds RATA points.';
     modalRoot.innerHTML = `<div class="modal-bg"><div class="modal card wide">
       <form class="pad stack" id="extform" style="padding:24px">
         <h2>${existing ? 'Edit tournament result' : prefill.admin ? 'Add a tournament result' : 'Submit a tournament result'}</h2>
         <p class="small muted" style="margin:0">${lead} Points = base points for your result × the category level, and need at least ${rules.min_entrants} players or pairs in your category.</p>
         <div class="form-grid">
           ${prefill.admin ? `<label class="field full">Member<select class="input" name="member_id" required><option value="" disabled ${prefill.member_id ? '' : 'selected'}>Pick the member</option>${memberCache.map((x) => opt(x.id, prefill.member_id || '', x.name)).join('')}</select></label>` : ''}
-          <label class="field full">Tournament<input class="input" name="tournament" required maxlength="160" value="${esc(r.tournament)}" placeholder="Bali Open 2026"></label>
-          <label class="field">Organizer<input class="input" name="organizer" maxlength="160" value="${esc(r.organizer)}" placeholder="Club, federation…"></label>
-          <label class="field">Date<input class="input" type="date" name="event_date" required max="${todayISO()}" value="${esc(r.event_date)}"></label>
-          <label class="field">Category<select class="input" name="category" required><option value="" disabled ${rules.categories.includes(r.category) ? '' : 'selected'}>Pick one</option>${rules.categories.map((c) => `<option ${c === r.category ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
-          <label class="field">Category level<select class="input" name="level">${Object.entries(rules.levels).map(([k, v]) => opt(k, r.level, `${v[0]} (× ${v[1]})`)).join('')}</select></label>
-          <label class="field">Format<select class="input" name="format">${opt('singles', r.format, 'Singles')}${opt('doubles', r.format, 'Doubles')}</select></label>
-          <label class="field">${prefill.admin ? 'Result' : 'Your result'}<select class="input" name="placement">${Object.entries(rules.places).map(([k, v]) => opt(k, r.placement, v)).join('')}</select></label>
-          <label class="field">Players or pairs in your category<input class="input" type="number" name="entrants" min="1" max="1024" required value="${esc(r.entrants)}" inputmode="numeric"></label>
-          <label class="field doubles-only">Partner (member)<select class="input" name="partner_id"><option value="">Not a RATA member / no partner</option>${memberCache.filter((x) => prefill.admin || x.id !== state.user.id).map((x) => opt(x.id, r.partner ? r.partner.id : '', x.name)).join('')}</select></label>
-          <label class="field doubles-only">Partner name (if not a member)<input class="input" name="partner_name" maxlength="100" value="${esc(r.partner_name || '')}"></label>
-          <label class="field">Proof photo<input class="input" type="file" name="proof" accept="image/*"><span class="hint">${r.has_proof ? 'A photo is attached. Pick a new one to replace it.' : 'Draw, results board, certificate…'}</span></label>
-          <label class="field">Or proof link<input class="input" name="proof_link" maxlength="500" value="${esc(r.proof_link || '')}" placeholder="https://"></label>
+          ${extFields(r, rules, memberCache.filter((x) => prefill.admin || x.id !== state.user.id), { admin: prefill.admin })}
           <label class="field full">Notes for the admin<textarea class="input" name="notes" maxlength="1000">${esc(r.notes || '')}</textarea></label>
         </div>
-        <div class="ext-estimate" id="extest"></div>
+        <div class="ext-estimate"></div>
         <div id="exterr"></div>
         <div class="row" style="justify-content:flex-end"><button type="button" class="btn ghost" data-close>Cancel</button><button class="btn dark" type="submit">${adminEdit ? 'Save changes' : existing ? 'Save and resubmit' : prefill.admin ? 'Add result' : 'Submit for approval'}</button></div>
       </form></div></div>`;
     const form = document.getElementById('extform');
-    const update = () => {
-      const f = formData(form);
-      form.querySelectorAll('.doubles-only').forEach((el) => el.classList.toggle('hidden', f.format !== 'doubles'));
-      const n = Number(f.entrants);
-      const base = rules.base[f.format][f.placement];
-      const mult = rules.levels[f.level][1];
-      document.getElementById('extest').innerHTML = !n ? '' : n < rules.min_entrants
-        ? `Fewer than ${rules.min_entrants} in the category: <b>0 RATA points</b> (the result is still kept on your profile).`
-        : `If approved: <b>${Math.round(base * mult + 1e-9)} RATA points</b> (${base} × ${mult})${f.format === 'doubles' && f.partner_id ? ', and the same for your partner' : ''}.`;
-    };
+    const update = () => extUpdate(form, rules);
     form.oninput = update; form.onchange = update; update();
     modalRoot.onclick = (e) => { if (e.target.classList.contains('modal-bg') || e.target.closest('[data-close]')) close(); };
     form.onsubmit = async (e) => {
       e.preventDefault();
-      const fd = new FormData();
-      const f = formData(form);
-      Object.entries(f).forEach(([k, v]) => { if (k !== 'proof') fd.append(k, v); });
-      if (f.format !== 'doubles') { fd.set('partner_id', ''); fd.set('partner_name', ''); }
-      const file = form.proof.files[0];
-      if (file) fd.append('proof', await shrinkImage(file), 'proof.jpg');
       const btn = form.querySelector('[type=submit]');
       btn.disabled = true;
       try {
-        const res = await fetch('api/index.php?r=external' + (existing ? '/' + existing.id : ''), { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'bcs' }, body: fd });
-        let data = {};
-        try { data = await res.json(); } catch (err) { /* non-JSON */ }
-        if (!res.ok) throw new Error(data.error || `Could not save (${res.status})`);
+        await extSend(form, existing && existing.id);
         close(); toast(adminEdit ? 'Result updated.' : prefill.admin ? 'Result added and approved.' : 'Sent for approval. You will get a notification when it is checked.'); onSaved();
       } catch (err) { btn.disabled = false; document.getElementById('exterr').innerHTML = `<div class="error-msg">${esc(err.message)}</div>`; }
     };
@@ -2444,7 +2466,10 @@
           <label class="field">Full name<input class="input" name="name" required maxlength="100" autocomplete="name"></label>` : ''}
         <label class="field">Email<input class="input" type="email" name="email" required autocomplete="email"></label>
         <label class="field">Password<input class="input" type="password" name="password" required ${reg ? 'minlength="8" autocomplete="new-password" placeholder="At least 8 characters"' : 'autocomplete="current-password"'}></label>
-        ${reg ? `${instagramField()}<div class="form-sub"><b>About you</b> <span class="hint">Optional. You can fill this in later.</span></div>${profileFields({}, { noInstagram: true })}` : ''}
+        ${reg ? `${instagramField()}<div class="form-sub"><b>About you</b> <span class="hint">Optional. You can fill this in later.</span></div>${profileFields({}, { noInstagram: true })}
+          <div class="form-sub"><b>Tournament results</b> <span class="hint">Optional. Played outside tournaments? Add each result here. An admin checks it, and approved results add RATA points.</span></div>
+          <div class="stack" id="su-results"></div>
+          <button type="button" class="btn ghost" id="su-add-result">+ Add a tournament result</button>` : ''}
         <div id="aerr"></div>
         <button class="btn dark lg" type="submit" style="width:100%">${reg ? 'Create account' : 'Log in'}</button>
         <p class="small muted" style="text-align:center;margin:0">${reg ? 'Already a member? <a class="link" href="#/login">Log in</a>' : 'New here? <a class="link" href="#/register">Create an account</a><br>Forgot your password? Ask an admin to reset it.'}</p>
@@ -2455,7 +2480,27 @@
       document.querySelector('#su-photo .avatar').outerHTML = `<span class="avatar lg photo" style="background-image:url('${url}')"></span>`;
       document.getElementById('su-recrop').hidden = false;
     };
+    let extRules = null; // External Tournament rules, loaded when the first result is added
     if (reg) {
+      const list = document.getElementById('su-results');
+      document.getElementById('su-add-result').onclick = async (e) => {
+        e.target.disabled = true;
+        try {
+          if (!extRules) extRules = (await api('external')).rules;
+          if (!memberCache) memberCache = (await api('members')).members;
+        } catch (err) { toast(err.message, true); return; } finally { e.target.disabled = false; }
+        const box = document.createElement('div');
+        box.className = 'ext-entry';
+        box.innerHTML = `<div class="spread"><b>Tournament result</b><button type="button" class="btn xs ghost" data-rm>Remove</button></div>
+          <div class="form-grid">${extFields({ tournament: '', organizer: '', event_date: '', category: '', level: 'beginner', format: 'doubles', placement: 'champion', entrants: '', partner: null, partner_name: '', proof_link: '' }, extRules, memberCache)}</div>
+          <div class="ext-estimate"></div>`;
+        const update = () => extUpdate(box, extRules);
+        box.oninput = update; box.onchange = update;
+        box.querySelector('[data-rm]').onclick = () => box.remove();
+        list.append(box);
+        update();
+        box.querySelector('[name=tournament]').focus();
+      };
       const input = document.getElementById('su-photo-input');
       input.onchange = async () => {
         const picked = input.files[0];
@@ -2474,15 +2519,24 @@
       const btn = e.target.querySelector('button[type=submit]');
       btn.disabled = true;
       try {
-        const d = await api(reg ? 'auth/register' : 'auth/login', formData(e.target));
+        // Result blocks are sent separately once the account exists (their fields are not account fields).
+        const results = [...e.target.querySelectorAll('.ext-entry')];
+        const body = formData({ elements: [...e.target.elements].filter((el) => !el.closest('.ext-entry')) });
+        const d = await api(reg ? 'auth/register' : 'auth/login', body);
         if (reg && photo) {
           try { d.user.photo = (await uploadPhoto(d.user.id, photo.cropped, photo.original)).member.photo; } catch (err) { toast("Account created, but the photo didn't upload: " + err.message, true); }
+        }
+        let failed = null;
+        for (const box of results) {
+          try { await extSend(box); } catch (err) { failed = failed || err.message; }
         }
         state.user = d.user;
         memberCache = null;
         renderTop();
         refreshUnread();
         toast(reg ? `Welcome, ${d.user.name.split(' ')[0]}!` + (d.user.role === 'admin' ? ' You are the admin.' : '') : 'Logged in.');
+        if (failed) setTimeout(() => toast(`Some tournament results were not sent (${failed}). Submit them again from your profile.`, true), 1500);
+        else if (results.length) setTimeout(() => toast('Your tournament results were sent to the admin for approval.'), 1500);
         const back = sessionStorage.getItem('bcs_back');
         sessionStorage.removeItem('bcs_back');
         location.hash = back || '#/me';

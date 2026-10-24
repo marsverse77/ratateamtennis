@@ -861,6 +861,7 @@ body.bcast #app { padding: 0; margin: 0; max-width: none; min-height: 0; }
 .ext-note { font-size: .85rem; background: var(--soft-2); border-left: 3px solid #e3b400; padding: 6px 10px; border-radius: 6px; }
 .ext-actions { margin-top: 4px; }
 .ext-estimate { font-size: .9rem; }
+.ext-entry { border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 12px; }
 .modal.wide { max-width: 720px; }
 @media (max-width: 560px) { .ext-card { grid-template-columns: 1fr; } .ext-place { justify-self: start; padding: 4px 10px; } }
 .progress { height: 10px; border-radius: 999px; background: var(--soft); overflow: hidden; margin-top: 6px; }

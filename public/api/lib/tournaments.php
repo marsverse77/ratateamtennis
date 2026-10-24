@@ -187,12 +187,15 @@ function external_list_out(array $rs): array
     return array_map(fn($r) => external_out($r, $names), $rs);
 }
 
-/** Admin: every result (?status= filters). Member: their own. */
+/** Admin: every result (?status= filters). Member: their own. Signed out (the sign-up form): only the rules. */
 function external_list(): array
 {
-    $u = require_user();
+    $u = current_user();
     $counts = [];
-    if ($u['role'] === 'admin') {
+    if (!$u) {
+        $status = 'none';
+        $rs = [];
+    } elseif ($u['role'] === 'admin') {
         $status = in_array($_GET['status'] ?? '', ['pending', 'needs_revision', 'approved', 'rejected'], true) ? $_GET['status'] : 'pending';
         $rs = rows('SELECT * FROM external_results WHERE status = ? ORDER BY ' . ($status === 'pending' ? 'created_at' : 'updated_at DESC'), [$status]);
         foreach (rows('SELECT status, COUNT(*) AS n FROM external_results GROUP BY status') as $r) {
@@ -211,8 +214,8 @@ function external_list(): array
 }
 
 /**
- * Member submits (id 0) or corrects their result. Multipart fields plus optional "proof" image.
- * An admin can add a new result for a member (member_id): it needs no proof and is approved straight away.
+ * Member submits (id 0) or corrects their result. Multipart fields plus an optional "proof" image or link.
+ * An admin can add a new result for a member (member_id): it is approved straight away.
  */
 function external_save(int $id): array
 {
@@ -293,9 +296,6 @@ function external_save(int $id): array
             fail(422, 'That image is too big (max 10 MB).');
         }
         $data['proof_file'] = save_image($f['tmp_name'], EXTERNAL_DIR, 'ext-' . $subject['id'], 1600);
-    }
-    if (!$byAdmin && !$adminEdit && !($data['proof_file'] ?? $old['proof_file'] ?? null) && $data['proof_link'] === '') {
-        fail(422, 'Add a photo or a link as proof (draw, results page, certificate…).');
     }
     $data += ['status' => $adminEdit ? $old['status'] : 'pending', 'updated_at' => now()];
     if ($adminEdit) {
