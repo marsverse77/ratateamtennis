@@ -33,9 +33,9 @@
   const GENDERS = { male: 'Male', female: 'Female' };
   const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
-  // RATA wordmark (R + two crossbar-less A's), drawn in currentColor so it works on any surface.
-  const LOGO = '<svg class="logo" viewBox="0 5 140 40" fill="currentColor" role="img" aria-label="RATA"><path d="M4.5 45V9.5H21Q31.5 9.5 31.5 17.25Q31.5 25 21 25H4.5M19 25L31 45" fill="none" stroke="currentColor" stroke-width="9"/><path d="M37 45L49 5H59L71 45H62L54 17L46 45Z"/><path d="M73 5H105V14H93.5V45H84.5V14H73Z"/><path d="M106 45L118 5H128L140 45H131L123 17L115 45Z"/></svg>';
-  const LOGO_TEAM = '<svg class="logo" viewBox="0 5 196 40" fill="currentColor" role="img" aria-label="RATA Team"><path d="M4.5 45V9.5H21Q31.5 9.5 31.5 17.25Q31.5 25 21 25H4.5M19 25L31 45" fill="none" stroke="currentColor" stroke-width="9"/><path d="M37 45L49 5H59L71 45H62L54 17L46 45Z"/><path d="M73 5H105V14H93.5V45H84.5V14H73Z"/><path d="M106 45L118 5H128L140 45H131L123 17L115 45Z"/><text x="150" y="31" font-family="Archivo, sans-serif" font-style="italic" font-weight="900" font-size="15" font-stretch="75%" letter-spacing=".5">TEAM</text></svg>';
+  // RATA wordmark (traced from the club logo, white on transparent).
+  const LOGO = '<img class="logo" src="assets/img/mark.svg" alt="RATA">';
+  const LOGO_TEAM = '<span class="logo-team"><img class="logo" src="assets/img/mark.svg" alt="RATA"><b>TEAM</b></span>';
   const ICON = {
     chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>',
     clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
