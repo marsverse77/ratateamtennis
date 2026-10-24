@@ -1412,13 +1412,13 @@
 
   async function viewLeaderboard() {
     setNav('leaderboard');
-    // Choices live in the address: #/leaderboard?tab=session&cat=mabar&fmt=singles
+    // Choices live in the address: #/leaderboard?tab=session&cat=mabar&fmt=singles&gender=female
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
-    const pick = { tab: q.get('tab') === 'session' ? 'session' : 'overall', cat: ['mabar', 'mini', 'external'].includes(q.get('cat')) ? q.get('cat') : 'mabar', fmt: ['singles', 'doubles'].includes(q.get('fmt')) ? q.get('fmt') : 'all' };
+    const pick = { tab: q.get('tab') === 'session' ? 'session' : 'overall', cat: ['mabar', 'mini', 'external'].includes(q.get('cat')) ? q.get('cat') : 'mabar', fmt: ['singles', 'doubles'].includes(q.get('fmt')) ? q.get('fmt') : 'all', gender: ['male', 'female'].includes(q.get('gender')) ? q.get('gender') : 'all' };
     const opt = (list, val) => list.map(([k, v]) => `<option value="${k}" ${k === val ? 'selected' : ''}>${v}</option>`).join('');
     const draw = async () => {
       const cat = pick.tab === 'session' ? pick.cat : 'all';
-      const lb = await api(`leaderboard&cat=${cat}&fmt=${pick.fmt}`);
+      const lb = await api(`leaderboard&cat=${cat}&fmt=${pick.fmt}&gender=${pick.gender}`);
       history.replaceState(null, '', '#/leaderboard?' + new URLSearchParams(pick).toString());
       app.innerHTML = `<div class="wrap">
         <div class="page-head"><div><h1>Leaderboard</h1><p class="muted">RATA ranking points from Play Sessions (+1 for attending, +1 for every regular match you win), Internal Tournaments and External Tournaments. Points keep adding up.</p></div></div>
@@ -1426,6 +1426,7 @@
         <div class="lb-filters">
           ${pick.tab === 'session' ? `<label class="lb-pick"><span>Activity type</span><select class="input" data-pick="cat">${opt([['mabar', ACTIVITY.mabar], ['mini', ACTIVITY.mini], ['external', ACTIVITY.external]], pick.cat)}</select></label>` : ''}
           <label class="lb-pick"><span>Format</span><select class="input" data-pick="fmt">${opt([['all', 'All'], ['singles', 'Singles'], ['doubles', 'Doubles']], pick.fmt)}</select></label>
+          <label class="lb-pick"><span>Gender</span><select class="input" data-pick="gender">${opt([['all', 'All'], ['male', 'Men'], ['female', 'Women']], pick.gender)}</select></label>
         </div>
         <div class="card pad lb-card">${boardTable(lb.rows, { cat: lb.cat, empty: 'No RATA points here yet.' })}</div></div>`;
     };
