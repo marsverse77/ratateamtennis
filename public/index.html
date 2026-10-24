@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RATA Team</title>
+  <meta name="description" content="RATA Team: a tennis community in Bali. Play sessions, coaching, tournaments, live scores and leaderboards.">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="icon" type="image/png" href="assets/img/favicon.png">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="RATA">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,400..900;1,62..125,400..900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/app.css?v=31">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#/" aria-label="RATA Team home">
+        <svg class="logo" viewBox="0 5 196 40" fill="currentColor" aria-hidden="true"><path d="M4.5 45V9.5H21Q31.5 9.5 31.5 17.25Q31.5 25 21 25H4.5M19 25L31 45" fill="none" stroke="currentColor" stroke-width="9"/><path d="M37 45L49 5H59L71 45H62L54 17L46 45Z"/><path d="M73 5H105V14H93.5V45H84.5V14H73Z"/><path d="M106 45L118 5H128L140 45H131L123 17L115 45Z"/><text x="150" y="31" font-family="Archivo, sans-serif" font-style="italic" font-weight="900" font-size="15" font-stretch="75%" letter-spacing=".5">TEAM</text></svg>
+      </a>
+      <nav class="nav" aria-label="Main">
+        <a href="#/sessions" data-nav="sessions">Sessions</a>
+        <a href="#/live" data-nav="live">Live Scores</a>
+        <a href="#/leaderboard" data-nav="leaderboard">Leaderboard</a>
+        <a href="#/members" data-nav="members">Members</a>
+        <a href="#/blog" data-nav="blog">Blog</a>
+      </nav>
+      <div class="top-actions" id="top-actions"></div>
+    </div>
+  </header>
+
+  <main id="app"><div class="loading">Loading…</div></main>
+
+  <nav class="tabbar" aria-label="Tabs">
+    <a href="#/sessions" data-nav="sessions">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+      Sessions
+    </a>
+    <a href="#/live" data-nav="live">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M5.5 6.5c3 2.5 3 8.5 0 11M18.5 6.5c-3 2.5-3 8.5 0 11"/></svg>
+      Live
+    </a>
+    <a href="#/leaderboard" data-nav="leaderboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H4v1a4 4 0 0 0 4 4M16 6h4v1a4 4 0 0 1-4 4M12 13v4M8 21h8M9 17h6"/></svg>
+      Rankings
+    </a>
+    <a href="#/members" data-nav="members">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 4 6"/></svg>
+      Members
+    </a>
+    <a href="#/blog" data-nav="blog">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      Blog
+    </a>
+  </nav>
+
+  <footer class="site-foot"><div><span>RATA Team · Bali</span><a href="https://ratateamtennis.id">ratateamtennis.id</a></div></footer>
+
+  <div id="modal-root"></div>
+  <script src="assets/js/i18n.js?v=3"></script>
+  <script src="assets/js/app.js?v=39"></script>
+</body>
+</html>

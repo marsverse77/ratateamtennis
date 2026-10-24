@@ -1,0 +1,45 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-hostinger
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check PHP syntax
+        run: find public -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      # Database settings for the API. With no DB_NAME secret the app uses a
+      # built-in SQLite file in public_html/api/data/ instead of MySQL.
+      - name: Write API config
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          php -r 'file_put_contents("public/api/config.php", "<?php\nreturn " . var_export([
+            "db_host" => getenv("DB_HOST") ?: "localhost",
+            "db_name" => getenv("DB_NAME") ?: "",
+            "db_user" => getenv("DB_USER") ?: "",
+            "db_pass" => getenv("DB_PASSWORD") ?: "",
+          ], true) . ";\n");'
+
+      - name: Upload to Hostinger via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./public/
+          server-dir: ${{ secrets.FTP_SERVER_DIR || '/public_html/' }}
