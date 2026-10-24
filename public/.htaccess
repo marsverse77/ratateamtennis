@@ -1,0 +1,15 @@
+Options -Indexes
+DirectoryIndex index.html index.php
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.(png|jpg|jpeg|svg|woff2?)$">
+    Header set Cache-Control "public, max-age=604800"
+  </FilesMatch>
+</IfModule>
+
+AddType application/manifest+json .webmanifest
+<IfModule mod_headers.c>
+  <Files "sw.js">
+    Header set Cache-Control "no-cache"
+  </Files>
+</IfModule>

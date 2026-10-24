@@ -1,0 +1,10 @@
+public/api/config.php
+public/api/data/*
+!public/api/data/.htaccess
+.DS_Store
+public/uploads/avatars/*
+public/uploads/sessions/*
+public/uploads/banners/*
+public/uploads/blog/*
+public/uploads/hero/*
+public/uploads/thumbs/

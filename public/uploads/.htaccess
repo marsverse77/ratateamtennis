@@ -1,0 +1,5 @@
+# Member and session photos only: never run scripts from here.
+Options -Indexes
+<FilesMatch "\.(php\d?|phtml|phar|cgi|pl|py|sh)$">
+  Require all denied
+</FilesMatch>
