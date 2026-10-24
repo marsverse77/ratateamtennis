@@ -912,7 +912,8 @@ function session_players_edit(int $id): array
 }
 
 /**
- * Body: {mode: "replace" | "next" | "clear", rounds?: n}
+ * Body: {mode: "replace" | "next" | "rest" | "clear", rounds?: n}
+ * rest:    redo the rounds that haven't started, with the current players (someone arrived late)
  * replace: regenerate the whole schedule (only if nothing has been scored yet)
  * next:    append rounds (mexicano uses current standings)
  */
@@ -932,6 +933,26 @@ function session_generate(int $id): array
     $pdo = db();
     $pdo->beginTransaction();
     try {
+        if ($mode === 'rest') {
+            // Late arrivals: redo only the rounds nobody has started, keeping every played or live match.
+            $started = [];
+            foreach ($existing as $m) {
+                if ($m['status'] !== 'scheduled') {
+                    $started[(int) $m['round']] = true;
+                }
+            }
+            $redo = [];
+            foreach ($existing as $m) {
+                if (!isset($started[(int) $m['round']])) {
+                    $redo[(int) $m['round']] = true;
+                }
+            }
+            if (!$redo) {
+                fail(409, 'Every round has started already. Use "Add a round" instead.');
+            }
+            q('DELETE FROM matches WHERE session_id = ? AND round IN (' . implode(',', array_keys($redo)) . ')', [$id]);
+            $existing = array_values(array_filter($existing, fn($m) => isset($started[(int) $m['round']])));
+        }
         if ($mode === 'replace' || $mode === 'clear') {
             if ($scored) {
                 fail(409, 'Some matches already have scores. Use "Add round" instead, or reset those scores first.');
@@ -941,7 +962,7 @@ function session_generate(int $id): array
         }
         if ($mode !== 'clear') {
             $default = $s['format'] === 'mexicano' ? 1 : suggested_rounds($s);
-            $howMany = int_in('rounds', 1, 50, $mode === 'next' ? 1 : $default);
+            $howMany = $mode === 'rest' ? count($redo) : int_in('rounds', 1, 50, $mode === 'next' ? 1 : $default);
             if ($s['format'] === 'mexicano') {
                 $howMany = 1; // each mexicano round depends on the previous results
             }
@@ -977,7 +998,7 @@ function session_generate(int $id): array
     }
     if ($mode !== 'clear' && !empty(input()['notify'])) {
         notify(
-            ($mode === 'next' ? "Round $total is ready: " : 'Schedule is out: ') . $s['title'],
+            ($mode === 'next' ? "Round $total is ready: " : ($mode === 'rest' ? 'Schedule updated: ' : 'Schedule is out: ')) . $s['title'],
             'See your court and start time.',
             '#/sessions/' . $id,
             $players
