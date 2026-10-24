@@ -84,6 +84,7 @@ function dispatch(string $method, array $p): array
         'POST matches/:id/placement' => match_placement($id),
         'POST sessions/:id/matches' => match_create($id),
         'POST sessions/:id/round-time' => round_time($id),
+        'POST sessions/:id/round-delete' => round_delete($id),
         'POST sessions/:id/pay' => session_pay($id),
         'POST sessions/:id/payments' => session_payment_admin($id),
         'POST refunds/:id' => refund_mark($id),
@@ -2295,6 +2296,39 @@ function round_time(int $id): array
         $t = (int) $m['round'] === $round ? $mins($time) : $mins($m['start_time'] ?: '00:00') + $delta;
         $t = (($t % 1440) + 1440) % 1440;
         update('matches', (int) $m['id'], ['start_time' => sprintf('%02d:%02d', intdiv($t, 60), $t % 60)]);
+    }
+    return session_detail($id);
+}
+
+/** Admin deletes a whole round nobody has scored. Later rounds move up one number and take over its time. Body: {round} */
+function round_delete(int $id): array
+{
+    require_admin();
+    assert_not_frozen(get_session($id));
+    $round = int_in('round', 1, 999);
+    $ms = rows('SELECT * FROM matches WHERE session_id = ? AND round = ?', [$id, $round]) ?: fail(404, 'Round not found.');
+    foreach ($ms as $m) {
+        if (!match_unplayed($m)) {
+            fail(409, "A match in round $round already has points. Reset its score first, or remove the other matches one by one.");
+        }
+    }
+    $mins = fn($t) => (int) substr($t, 0, 2) * 60 + (int) substr($t, 3, 2);
+    $next = row('SELECT start_time FROM matches WHERE session_id = ? AND round > ? ORDER BY round, court LIMIT 1', [$id, $round]);
+    $delta = $next && $ms[0]['start_time'] && $next['start_time'] ? $mins($next['start_time']) - $mins($ms[0]['start_time']) : 0;
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        q('DELETE FROM matches WHERE session_id = ? AND round = ?', [$id, $round]);
+        foreach (rows('SELECT id, round, start_time FROM matches WHERE session_id = ? AND round > ?', [$id, $round]) as $m) {
+            $t = ((($m['start_time'] ? $mins($m['start_time']) - $delta : 0) % 1440) + 1440) % 1440;
+            update('matches', (int) $m['id'], ['round' => (int) $m['round'] - 1] + ($m['start_time'] ? ['start_time' => sprintf('%02d:%02d', intdiv($t, 60), $t % 60)] : []));
+        }
+        $total = (int) q('SELECT COALESCE(MAX(round), 0) FROM matches WHERE session_id = ?', [$id])->fetchColumn();
+        update('play_sessions', $id, ['rounds' => $total]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
     }
     return session_detail($id);
 }
