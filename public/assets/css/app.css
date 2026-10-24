@@ -1136,3 +1136,16 @@ body.scoring .site-foot, body.bcast .site-foot { display: none; }
 .photo-box.empty-photo::after { content: ""; position: absolute; inset: 0; background: rgba(0,0,0,.55); pointer-events: none; }
 .photo-box.empty-photo span { position: relative; z-index: 1; }
 @media (max-width: 1440px) { .top-actions a.btn.hide-m[href="#/finance"], .top-actions a.btn.hide-m[href="#/sessions/new"] { display: none; } }
+
+/* Wordmark: the traced logo image, with "TEAM" set beside it */
+.logo-team { display: inline-flex; align-items: flex-end; gap: .45em; color: #fff; line-height: 1; }
+.logo-team b { font: italic 900 .5em/1 var(--display); font-stretch: 75%; letter-spacing: .02em; padding-bottom: .05em; }
+.brand .logo-team { font-size: 34px; }
+.brand .logo-team .logo { height: 1em; }
+.auth-wrap .logo-big .logo-team { font-size: 64px; }
+.auth-wrap .logo-big .logo-team .logo { height: 1em; }
+.tv-head .logo-team { font-size: 7vh; }
+.tv-head .logo-team .logo { height: 1em; }
+img.logo { display: block; max-width: none; }
+.empty img.logo { margin: 0 auto 12px; }
+@media (max-width: 760px) { .brand .logo-team { font-size: 28px; } }
