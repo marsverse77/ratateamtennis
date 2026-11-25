@@ -131,7 +131,7 @@
     if (state.user) {
       el.innerHTML = `${langBtn}
         ${isAdmin() ? `<a class="btn sm ghost-light act-bell" href="#/activity" title="Member activity">Activity${state.unread ? `<span class="bell-count">${state.unread > 99 ? '99+' : state.unread}</span>` : ''}</a>` : ''}
-        ${isAdmin() ? '<a class="btn sm ghost-light hide-m hide-l" href="#/approvals">Approvals</a><a class="btn sm ghost-light hide-m" href="#/finance">Finance</a><a class="btn sm ghost-light hide-m" href="#/sessions/new">+ New session</a>' : ''}
+        ${isAdmin() ? '<a class="btn sm ghost-light hide-m hide-l" href="#/requests">Requests</a><a class="btn sm ghost-light hide-m hide-l" href="#/approvals">Approvals</a><a class="btn sm ghost-light hide-m" href="#/finance">Finance</a><a class="btn sm ghost-light hide-m" href="#/sessions/new">+ New session</a>' : ''}
         <a class="btn sm ghost-light chat-top" href="#/chat" title="Chats" aria-label="Chats">${ICON.chat}</a>
         <a class="user-chip" href="#/me" title="My account">${avatar(state.user, 'dark')}<span class="hide-m">${esc(state.user.name.split(' ')[0])}</span></a>`;
     } else {
@@ -300,7 +300,7 @@
     kids_brs: 'Kids coaching with BRS · income split 35% BRS / 65% RATA',
     hitting: 'Practice with partners, no points',
   };
-  const activityTag = (s) => `<span class="tag act-${esc(s.activity || 'mabar')}">${esc(ACTIVITY[s.activity] || ACTIVITY.mabar)}</span>`;
+  const activityTag = (s) => `<span class="tag act-${esc(s.activity || 'mabar')}">${esc(ACTIVITY[s.activity] || ACTIVITY.mabar)}</span>${s.request_id ? '<span class="tag">Private booking</span>' : ''}`;
 
   function canScore(m) {
     if (!state.user) return false;
@@ -596,7 +596,7 @@
     const d = await api('sessions');
     app.innerHTML = `<div class="wrap">
       <div class="page-head"><div><h1>Sessions</h1><p class="muted">Pick a session, register, and play.</p></div>
-        ${isAdmin() ? '<a class="btn" href="#/sessions/new">+ Create a session</a>' : ''}</div>
+        <div class="row wrap-ok"><a class="btn ghost" href="#/schedule">Request a coach slot</a>${isAdmin() ? '<a class="btn" href="#/sessions/new">+ Create a session</a>' : ''}</div></div>
       ${d.upcoming.length ? `<div class="session-cards">${d.upcoming.map((s, i) => sessionCard(s, i, d.mine.includes(s.id), d.waiting.includes(s.id))).join('')}</div>`
         : '<div class="card empty">No upcoming sessions yet. Check back soon.</div>'}
       <div class="section-head"><h2>Past sessions</h2></div>
@@ -3400,6 +3400,275 @@
     };
   }
 
+  // ---------- coach schedule & slot requests ----------
+
+  // Slot colours follow the coach schedule sheet: dark green = court set, light green = find your own court.
+  const SLOT_CLASS = {
+    AVAILABLE_FIXED: 'fixed', AVAILABLE_FIND_COURT: 'find', AVAILABLE_PRIVATE_OR_KUYY: 'find priv',
+    BLOCKED_REGULAR: 'blocked', BLOCKED_KUYY: 'kuyy', NOT_AVAILABLE: 'na', OFF: 'off',
+  };
+  const SLOT_LABEL = {
+    AVAILABLE_FIXED: 'Available', AVAILABLE_FIND_COURT: 'Available', AVAILABLE_PRIVATE_OR_KUYY: 'Private (or Kuyy)',
+    BLOCKED_REGULAR: 'Blocked', BLOCKED_KUYY: 'Kuyy', NOT_AVAILABLE: 'Not available', OFF: 'Off',
+  };
+  const REQ_STATUS = {
+    requested: ['Waiting for price', 'yellow'], priced: ['Price sent', 'yellow'], approved: ['Booked · waiting for transfer', ''],
+    paid: ['Booked · paid ✓', 'ok'], rejected: ['Not available', 'done'], declined: ['Price declined', 'done'],
+    cancelled: ['Cancelled', 'done'], taken: ['Booked by someone else', 'done'],
+  };
+  const DAY_LONG = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const addDays = (iso, n) => { const x = parseDate(iso); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  const overlaps = (a1, a2, b1, b2) => a1 < b2 && b1 < a2;
+
+  function reqCard(r, opts = {}) {
+    const [label, cls] = REQ_STATUS[r.status] || [r.status, ''];
+    const actions = [];
+    if (opts.admin) {
+      if (r.status === 'requested' || r.status === 'priced') {
+        actions.push(`<button class="btn xs dark" data-act="req-price" data-id="${r.id}">${r.status === 'priced' ? 'Change price' : 'Send price'}</button>`,
+          `<button class="btn xs ghost" data-act="req-reject" data-id="${r.id}">Not available</button>`);
+      }
+    } else if (r.status === 'priced') {
+      actions.push(`<button class="btn xs dark" data-act="req-accept" data-id="${r.id}">Accept &amp; book</button>`,
+        `<button class="btn xs ghost" data-act="req-decline" data-id="${r.id}">Decline</button>`);
+    } else if (r.status === 'requested') {
+      actions.push(`<button class="btn xs ghost" data-act="req-cancel" data-id="${r.id}">Cancel request</button>`);
+    }
+    if (r.session_id && (r.status === 'approved' || r.status === 'paid')) {
+      actions.push(`<a class="btn xs ${r.status === 'approved' && !opts.admin ? 'dark' : 'ghost'}" href="#/sessions/${r.session_id}">${r.status === 'approved' && !opts.admin ? 'Upload transfer proof' : 'Open session'}</a>`);
+    }
+    return `<div class="req-card">
+      <div class="req-when"><b>${esc(fmtDay(r.date))}</b><span>${esc(r.start)}–${esc(r.end)}</span></div>
+      <div class="req-body">
+        <div class="row wrap-ok" style="gap:8px"><b>${esc(r.kind_label)}</b><span class="small muted" data-notr>· ${esc(r.coach)}</span><span class="tag ${cls}">${esc(label)}</span></div>
+        <div class="small muted"><span data-notr>${esc(r.name)} · ${r.pax} pax</span> · ${ICON.pin}<span data-notr>${esc(r.court)}</span>${opts.admin ? `<span> · by </span><a class="link" href="#/members/${r.user.id}" data-notr>${esc(r.user.name)}</a>` : ''}</div>
+        ${r.note ? `<div class="small comment-text">“${esc(r.note)}”</div>` : ''}
+        ${r.status !== 'requested' && (r.price || r.status === 'priced') ? `<div class="req-price">${esc(rupiah(r.price))}</div>` : ''}
+        ${r.admin_note ? `<div class="small comment-text">${esc(r.admin_note)}</div>` : ''}
+        ${actions.length ? `<div class="row wrap-ok" style="gap:8px;margin-top:8px">${actions.join('')}</div>` : ''}
+      </div></div>`;
+  }
+
+  // Member + admin actions on a request card (shared by the schedule page and the admin requests page).
+  async function reqAction(a, list, done) {
+    const id = Number(a.dataset.id);
+    const r = list.find((x) => x.id === id);
+    const act = a.dataset.act.slice(4);
+    if (act === 'price') return priceModal(r, done);
+    let note = '';
+    if (act === 'reject') {
+      note = prompt('Why is this time not available? The member sees this (optional).', '');
+      if (note === null) return;
+    }
+    if (act === 'accept' && !confirm(`Book this time for ${rupiah(r.price)}?`)) return;
+    if (act === 'decline' && !confirm('Decline this price? The request is closed.')) return;
+    if (act === 'cancel' && !confirm('Cancel this request?')) return;
+    try {
+      const res = await api(`requests/${id}`, { action: act, note });
+      if (act === 'accept') { toast('Booked! Upload your transfer proof to finish.'); location.hash = '#/sessions/' + res.session_id; return; }
+      toast({ reject: 'Saved. The member was notified.', decline: 'Request closed.', cancel: 'Request cancelled.' }[act]);
+      done();
+    } catch (err) { toast(err.message, true); }
+  }
+
+  function priceModal(r, onSaved) {
+    const close = () => { modalRoot.innerHTML = ''; };
+    const bank = (r.bank && r.bank.account ? r.bank : null) || (state.reqBank ? { name: state.reqBank.bank_name, account: state.reqBank.bank_account, holder: state.reqBank.bank_holder } : {});
+    modalRoot.innerHTML = `<div class="modal-bg"><div class="modal card">
+      <form class="pad stack" id="priceform" style="padding:24px">
+        <h2>Send a price</h2>
+        <p class="small muted" style="margin:0"><b>${esc(r.kind_label)}</b> · <span data-notr>${esc(r.coach)}</span> · <span>${esc(fmtDay(r.date))}</span> <span data-notr>${esc(r.start)}–${esc(r.end)} · ${r.pax} pax · ${esc(r.court)}</span></p>
+        <label class="field">Price (Rp)<input class="input" type="number" name="price" min="0" step="1000" required value="${r.price || ''}" placeholder="e.g. 350000"><span class="hint">Total for this booking. When the member accepts, the slot is blocked and they transfer this amount.</span></label>
+        <label class="field">Message to the member<textarea class="input" name="note" maxlength="500" placeholder="Optional: what's included, balls, court fee…">${esc(r.admin_note || '')}</textarea></label>
+        <div class="bank-fields">
+          <label class="field">Bank<input class="input" name="bank_name" maxlength="60" value="${esc(bank.name || '')}"></label>
+          <label class="field">Account number<input class="input" name="bank_account" maxlength="40" value="${esc(bank.account || '')}"></label>
+          <label class="field">Account name<input class="input" name="bank_holder" maxlength="100" value="${esc(bank.holder || '')}"></label>
+        </div>
+        <div id="priceerr"></div>
+        <div class="row" style="justify-content:flex-end"><button type="button" class="btn ghost" data-close>Cancel</button><button class="btn dark">Send price</button></div>
+      </form></div></div>`;
+    modalRoot.onclick = (e) => { if (e.target.classList.contains('modal-bg') || e.target.closest('[data-close]')) close(); };
+    document.getElementById('priceform').onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        await api(`requests/${r.id}`, { action: 'price', ...formData(e.target) });
+        close(); toast('Price sent. The member gets a notification.'); onSaved();
+      } catch (err) { document.getElementById('priceerr').innerHTML = `<div class="error-msg">${esc(err.message)}</div>`; }
+    };
+  }
+
+  function requestModal(d, slot, date, onSaved) {
+    const close = () => { modalRoot.innerHTML = ''; };
+    const coach = d.coaches.find((c) => c.key === d.coach) || { name: '' };
+    const fixed = !!slot.court;
+    modalRoot.innerHTML = `<div class="modal-bg"><div class="modal card">
+      <form class="pad stack" id="reqform" style="padding:24px">
+        <h2>Request this time</h2>
+        <div class="req-slot ${SLOT_CLASS[slot.status]}"><b><span>${esc(fmtDay(date))}</span> · ${esc(slot.start)}–${esc(slot.end)}</b><span><span data-notr>${esc(coach.name)}</span> · <span ${fixed ? 'data-notr' : ''}>${fixed ? esc(slot.court) : 'Find your own court'}</span></span></div>
+        <label class="field">Name<input class="input" name="name" maxlength="100" required value="${esc(state.user.name)}"><span class="hint">Who the booking is for.</span></label>
+        <label class="field">Number of people (pax)<input class="input" type="number" name="pax" min="1" max="20" value="1" required></label>
+        <fieldset class="type-pick"><legend>Session type</legend>
+          <label><input type="radio" name="kind" value="hitting" checked><span><b>Hitting</b><small>Rally and play with the coach</small></span></label>
+          <label><input type="radio" name="kind" value="coaching"><span><b>Coaching</b><small>A lesson: drills and technique</small></span></label>
+        </fieldset>
+        ${fixed ? `<label class="field">Court<input class="input" value="${esc(slot.court)}" disabled><span class="hint">This time is at a set court.</span></label>`
+          : `<label class="field">Court<input class="input" name="court" maxlength="100" required list="venue-list" placeholder="Where will you play?"><datalist id="venue-list">${d.venues.map((v) => `<option value="${esc(v)}">`).join('')}</datalist><span class="hint">For this time you book the court yourself. Tell us where.</span></label>`}
+        <label class="field">Notes<textarea class="input" name="note" maxlength="500" placeholder="Optional: level, what you want to work on…"></textarea></label>
+        <p class="small muted" style="margin:0">We reply with the price. Once you accept it, the slot is blocked for you and you just transfer.</p>
+        <div id="reqerr"></div>
+        <div class="row" style="justify-content:flex-end"><button type="button" class="btn ghost" data-close>Cancel</button><button class="btn dark">Send request</button></div>
+      </form></div></div>`;
+    modalRoot.onclick = (e) => { if (e.target.classList.contains('modal-bg') || e.target.closest('[data-close]')) close(); };
+    document.getElementById('reqform').onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        await api('requests', { slot_id: slot.id, date, ...formData(e.target) });
+        close(); toast('Request sent. We will reply with the price.'); onSaved();
+      } catch (err) { document.getElementById('reqerr').innerHTML = `<div class="error-msg">${esc(err.message)}</div>`; }
+    };
+  }
+
+  function slotEditModal(d, slot, onSaved) {
+    const close = () => { modalRoot.innerHTML = ''; };
+    modalRoot.innerHTML = `<div class="modal-bg"><div class="modal card">
+      <form class="pad stack" id="slotform" style="padding:24px">
+        <h2>Edit slot</h2>
+        <p class="small muted" style="margin:0"><b>${esc(DAY_LONG[slot.day - 1])}</b> · ${esc(slot.start)}–${esc(slot.end)}<br><span>Changes apply to every week.</span></p>
+        <label class="field">Status<select class="input" name="status">${Object.entries(d.statuses).map(([k, v]) => `<option value="${k}" ${k === slot.status ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+        <label class="field">Court<input class="input" name="court" maxlength="100" value="${esc(slot.court)}" list="venue-list2"><datalist id="venue-list2">${d.venues.map((v) => `<option value="${esc(v)}">`).join('')}</datalist><span class="hint">Leave empty when members find their own court.</span></label>
+        <label class="field">Program<input class="input" name="program" maxlength="100" value="${esc(slot.program)}" placeholder="Regular, Kids Session…"></label>
+        <label class="field">Note<input class="input" name="note" maxlength="255" value="${esc(slot.note)}"></label>
+        <div id="sloterr"></div>
+        <div class="row" style="justify-content:flex-end"><button type="button" class="btn ghost" data-close>Cancel</button><button class="btn dark">Save</button></div>
+      </form></div></div>`;
+    modalRoot.onclick = (e) => { if (e.target.classList.contains('modal-bg') || e.target.closest('[data-close]')) close(); };
+    document.getElementById('slotform').onsubmit = async (e) => {
+      e.preventDefault();
+      try { await api(`slots/${slot.id}`, formData(e.target)); close(); toast('Slot saved.'); onSaved(); } catch (err) { document.getElementById('sloterr').innerHTML = `<div class="error-msg">${esc(err.message)}</div>`; }
+    };
+  }
+
+  async function viewSchedule() {
+    setNav('schedule');
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const params = new URLSearchParams();
+    if (q.get('coach')) params.set('coach', q.get('coach'));
+    if (q.get('week')) params.set('week', q.get('week'));
+    const [d, mine] = await Promise.all([
+      api('schedule' + (params.toString() ? '&' + params.toString() : '')),
+      state.user ? api('requests') : Promise.resolve(null),
+    ]);
+    const editing = isAdmin() && q.has('edit');
+    const go = (patch) => {
+      const o = { coach: d.coach, week: d.week, edit: editing ? '' : null, ...patch };
+      location.hash = '#/schedule?' + Object.entries(o).filter(([, v]) => v !== null).map(([k, v]) => (v === '' ? k : `${k}=${encodeURIComponent(v)}`)).join('&');
+    };
+    let day = Number(sessionStorage.getItem('sched_day')) || 0;
+    const todayIdx = d.dates.indexOf(d.today);
+    if (!day || day > 7) day = todayIdx >= 0 ? todayIdx + 1 : 1;
+
+    // Cells for one day: open slots one by one, runs of the same blocked/off entry merged into one block.
+    const cells = (dow) => {
+      const date = d.dates[dow - 1];
+      const list = d.slots.filter((s) => s.day === dow);
+      const out = [];
+      for (const s of list) {
+        const prev = out[out.length - 1];
+        if (!editing && prev && !s.open && !prev.slot.open && prev.slot.status === s.status && prev.slot.program === s.program && prev.slot.court === s.court && prev.end === s.start) {
+          prev.end = s.end; continue;
+        }
+        out.push({ slot: s, start: s.start, end: s.end });
+      }
+      return out.map(({ slot: s, start, end }) => {
+        const past = date < d.today || (date === d.today && s.start <= d.now);
+        const booked = s.open && d.booked.find((b) => b.date === date && overlaps(s.start, s.end, b.start, b.end));
+        const reqs = s.open ? d.pending.filter((r) => r.date === date && r.slot_id === s.id) : [];
+        const myReq = reqs.find((r) => r.mine);
+        let cls = SLOT_CLASS[s.status] || 'na';
+        let label = SLOT_LABEL[s.status] || s.status;
+        let sub = s.open ? (s.court || 'Find your own court') : [s.court, s.program].filter((x) => x && x !== 'Off' && x !== 'Tidak tersedia').join(' · ');
+        if (booked) { cls = 'booked'; label = booked.mine ? 'Booked by you' : 'Booked'; }
+        else if (myReq) label = myReq.status === 'priced' ? 'Price sent' : 'Requested';
+        const clickable = editing || (s.open && !booked && !past) || (booked && booked.session_id);
+        const tagN = isAdmin() && reqs.length && !booked ? `<i class="slot-n">${reqs.length}</i>` : '';
+        return `<${clickable ? 'button' : 'div'} class="slot ${cls} ${past ? 'past' : ''} ${myReq && !booked ? 'mine' : ''}" ${clickable ? `data-slot="${s.id}" data-date="${date}"${booked && booked.session_id ? ` data-session="${booked.session_id}"` : ''}` : ''}>
+          ${tagN}<span class="slot-time">${esc(start)}–${esc(end)}</span><b>${esc(label)}</b>${sub ? `<span class="slot-sub" ${s.open && !s.court ? '' : 'data-notr'}>${esc(sub)}</span>` : ''}
+        </${clickable ? 'button' : 'div'}>`;
+      }).join('') || '<div class="slot off"><b>Off</b></div>';
+    };
+    const prevWeek = d.week > d.this_week ? addDays(d.week, -7) : null;
+    const nextWeek = d.week < d.last_week ? addDays(d.week, 7) : null;
+    const myOpen = mine ? mine.requests.filter((r) => ['requested', 'priced', 'approved'].includes(r.status) && r.date >= d.today) : [];
+    const myPast = mine ? mine.requests.filter((r) => !myOpen.includes(r)).reverse().slice(0, 10) : [];
+    app.innerHTML = `<div class="wrap">
+      <div class="page-head"><div><h1>Coach schedule</h1><p class="muted">See a free time? Tap a green slot to request a Hitting or Coaching session. We reply with the price, and once you accept, the slot is yours.</p></div>
+        ${isAdmin() ? `<div class="row wrap-ok"><a class="btn ghost" href="#/requests"><span>Requests</span>${d.open_requests ? `<span> (${d.open_requests})</span>` : ''}</a><button class="btn ${editing ? '' : 'dark'}" data-act="edit">${editing ? 'Done editing' : 'Edit slots'}</button></div>` : ''}</div>
+      ${d.coaches.length > 1 ? `<div class="seg sub" style="margin-bottom:12px">${d.coaches.map((c) => `<button class="${c.key === d.coach ? 'on' : ''}" data-coach="${esc(c.key)}" data-notr>${esc(c.name)}</button>`).join('')}</div>` : ''}
+      <div class="sched-bar">
+        <button class="btn sm ghost" data-week="${prevWeek || ''}" ${prevWeek ? '' : 'disabled'}>‹ Previous week</button>
+        <b>${esc(fmtDay(d.dates[0]))} – ${esc(fmtDay(d.dates[6]))}</b>
+        <button class="btn sm ghost" data-week="${nextWeek || ''}" ${nextWeek ? '' : 'disabled'}>Next week ›</button>
+      </div>
+      <div class="sched-legend">
+        <span><i class="slot fixed"></i>Available · court set</span><span><i class="slot find"></i>Available · find your own court</span>
+        <span><i class="slot blocked"></i>Blocked</span><span><i class="slot kuyy"></i>Kuyy</span><span><i class="slot booked"></i>Booked</span><span><i class="slot na"></i>Not available / off</span>
+      </div>
+      ${editing ? '<div class="card pad small" style="margin-bottom:12px">Editing: tap any slot to change it for every week. The changes show to members right away.</div>' : ''}
+      <div class="sched-days">${d.dates.map((dt, i) => `<button class="${i + 1 === day ? 'on' : ''} ${dt === d.today ? 'today' : ''}" data-day="${i + 1}">${esc(DAYS[(i + 1) % 7])}<b>${parseDate(dt).getDate()}</b></button>`).join('')}</div>
+      <div class="sched-grid" data-show="${day}">
+        ${d.dates.map((dt, i) => `<div class="sched-col ${dt === d.today ? 'today' : ''}" data-day="${i + 1}"><div class="sched-head">${esc(fmtDay(dt))}</div>${cells(i + 1)}</div>`).join('')}
+      </div>
+      ${state.user ? `<div class="section-head" id="my-requests" style="margin-top:28px"><h2>My requests</h2></div>
+        ${myOpen.length || myPast.length ? `<div class="card pad stack req-list">${[...myOpen, ...myPast].map((r) => reqCard(r)).join('')}</div>` : '<div class="card empty">No requests yet. Tap a green slot above to ask for a time.</div>'}`
+        : '<div class="card pad empty" style="margin-top:20px"><p>Log in to request a time.</p><a class="btn dark" href="#/login">Log in</a></div>'}
+    </div>`;
+    if (q.has('requests')) setTimeout(() => { const el = document.getElementById('my-requests'); if (el) el.scrollIntoView(); }, 50);
+    app.onclick = async (e) => {
+      const t = e.target.closest('[data-act],[data-coach],[data-week],[data-day],[data-slot]');
+      if (!t) return;
+      if (t.dataset.act === 'edit') return go({ edit: editing ? null : '' });
+      if (t.dataset.act && t.dataset.act.startsWith('req-')) return reqAction(t, mine.requests, render);
+      if (t.dataset.coach) return go({ coach: t.dataset.coach });
+      if (t.dataset.week !== undefined) { if (t.dataset.week) go({ week: t.dataset.week }); return; }
+      if (t.dataset.day) {
+        sessionStorage.setItem('sched_day', t.dataset.day);
+        app.querySelectorAll('.sched-days button').forEach((b) => b.classList.toggle('on', b === t));
+        app.querySelector('.sched-grid').dataset.show = t.dataset.day;
+        return;
+      }
+      if (t.dataset.slot) {
+        const slot = d.slots.find((s) => s.id === Number(t.dataset.slot));
+        if (editing) return slotEditModal(d, slot, render);
+        if (t.dataset.session) { location.hash = '#/sessions/' + t.dataset.session; return; }
+        if (!state.user) { sessionStorage.setItem('bcs_back', location.hash); location.hash = '#/login'; return; }
+        return requestModal(d, slot, t.dataset.date, render);
+      }
+    };
+  }
+
+  async function viewRequests() {
+    setNav('schedule');
+    if (!state.user) return needLogin();
+    if (!isAdmin()) { location.hash = '#/schedule?requests'; return; }
+    const status = new URLSearchParams(location.hash.split('?')[1] || '').get('status') || 'open';
+    const d = await api('requests&status=' + encodeURIComponent(status));
+    state.reqBank = d.bank;
+    const c = d.counts;
+    const tabs = [['open', 'To reply', (c.requested || 0) + (c.priced || 0)], ['approved', 'Booked · not paid', c.approved || 0], ['paid', 'Paid', c.paid || 0],
+      ['closed', 'Closed', (c.rejected || 0) + (c.declined || 0) + (c.cancelled || 0) + (c.taken || 0)]];
+    app.innerHTML = `<div class="wrap" style="max-width:900px">
+      <div class="page-head"><div><h1>Schedule requests</h1><p class="muted">Members ask for open coach slots. Send a price; when they accept, the slot is blocked as a private session and they transfer there.</p></div>
+        <a class="btn ghost" href="#/schedule">Coach schedule</a></div>
+      <div class="seg sub board-switch" style="margin-bottom:14px">${tabs.map(([k, v, n]) => `<a class="${k === status ? 'on' : ''}" href="#/requests?status=${k}"><span>${v}</span>${n ? `<span> (${n})</span>` : ''}</a>`).join('')}</div>
+      ${d.requests.length ? `<div class="card pad stack req-list">${d.requests.map((r) => reqCard(r, { admin: true })).join('')}</div>` : '<div class="card pad empty">Nothing here.</div>'}
+    </div>`;
+    app.onclick = (e) => {
+      const a = e.target.closest('[data-act^="req-"]');
+      if (a) reqAction(a, d.requests, render);
+    };
+  }
+
   // ---------- router ----------
 
   const baseTitle = document.title;
@@ -3438,6 +3707,8 @@
       if (p[0] === 'login' || p[0] === 'register') return viewAuth(p[0]);
       if (p[0] === 'finance') return await viewFinance();
       if (p[0] === 'approvals') return await viewApprovals();
+      if (p[0] === 'schedule') return await viewSchedule();
+      if (p[0] === 'requests') return await viewRequests();
       if (p[0] === 'audit') return await viewAudit();
       if (p[0] === 'activity') return await viewActivity();
       if (p[0] === 'chat' && p[1]) return await viewChannel(Number(p[1]));

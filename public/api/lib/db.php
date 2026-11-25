@@ -1,7 +1,7 @@
 <?php
 // Database connection and schema. Works with MySQL (production) and SQLite (fallback / local dev).
 
-const SCHEMA_VERSION = 28;
+const SCHEMA_VERSION = 29;
 const BACKUP_DIR = __DIR__ . '/../data/backups';
 
 function config(): array
@@ -129,6 +129,7 @@ function migrate(PDO $pdo): void
             hit_partners VARCHAR(20) NOT NULL DEFAULT '',
             hit_balls VARCHAR(20) NOT NULL DEFAULT '',
             with_games INT NOT NULL DEFAULT 1,
+            request_id INT NULL,
             created_at VARCHAR(19) NOT NULL
         )$engine",
         "CREATE TABLE IF NOT EXISTS registrations (
@@ -355,6 +356,44 @@ function migrate(PDO $pdo): void
             url VARCHAR(255) NOT NULL,
             created_at VARCHAR(19) NOT NULL
         )$engine",
+        "CREATE TABLE IF NOT EXISTS coach_slots (
+            id $pk,
+            slot_key VARCHAR(40) NOT NULL UNIQUE,
+            coach_key VARCHAR(40) NOT NULL,
+            coach VARCHAR(100) NOT NULL,
+            day_iso INT NOT NULL,
+            start_time VARCHAR(5) NOT NULL,
+            end_time VARCHAR(5) NOT NULL,
+            court VARCHAR(100) NOT NULL DEFAULT '',
+            status VARCHAR(30) NOT NULL,
+            program VARCHAR(100) NOT NULL DEFAULT '',
+            note VARCHAR(255) NOT NULL DEFAULT ''
+        )$engine",
+        "CREATE TABLE IF NOT EXISTS slot_requests (
+            id $pk,
+            user_id INT NOT NULL,
+            slot_id INT NOT NULL,
+            coach_key VARCHAR(40) NOT NULL,
+            date VARCHAR(10) NOT NULL,
+            start_time VARCHAR(5) NOT NULL,
+            end_time VARCHAR(5) NOT NULL,
+            name VARCHAR(100) NOT NULL,
+            pax INT NOT NULL DEFAULT 1,
+            kind VARCHAR(12) NOT NULL,
+            court VARCHAR(100) NOT NULL DEFAULT '',
+            note VARCHAR(500) NOT NULL DEFAULT '',
+            status VARCHAR(12) NOT NULL DEFAULT 'requested',
+            price INT NOT NULL DEFAULT 0,
+            admin_note VARCHAR(500) NOT NULL DEFAULT '',
+            bank_name VARCHAR(60) NOT NULL DEFAULT '',
+            bank_account VARCHAR(40) NOT NULL DEFAULT '',
+            bank_holder VARCHAR(100) NOT NULL DEFAULT '',
+            session_id INT NULL,
+            priced_by INT NULL,
+            priced_at VARCHAR(19) NULL,
+            decided_at VARCHAR(19) NULL,
+            created_at VARCHAR(19) NOT NULL
+        )$engine",
         "CREATE TABLE IF NOT EXISTS push_queue (
             sub_id INT NOT NULL,
             notification_id INT NOT NULL,
@@ -504,6 +543,21 @@ function migrate(PDO $pdo): void
         usort($past, fn($a, $b) => strcmp($a[4], $b[4]));
         foreach ($past as $row) {
             $add->execute($row);
+        }
+    }
+    // v29: members request coach slots (coach_slots and slot_requests are created above, slots seeded from
+    // the coach schedule sheet); an accepted request becomes a private session linked by request_id.
+    if ($v >= 1 && $v < 29) {
+        $pdo->exec('ALTER TABLE play_sessions ADD COLUMN request_id INT NULL');
+    }
+    if ($v < 29) {
+        $pdo->exec('CREATE INDEX slot_req_coach_date ON slot_requests (coach_key, date)');
+        if (!(int) $pdo->query('SELECT COUNT(*) FROM coach_slots')->fetchColumn()) {
+            $add = $pdo->prepare('INSERT INTO coach_slots (slot_key, coach_key, coach, day_iso, start_time, end_time, court, status, program, note)
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            foreach (require __DIR__ . '/coach_slots_seed.php' as $r) {
+                $add->execute($r);
+            }
         }
     }
     // v28: @mentions in chat messages (comma-separated user ids).

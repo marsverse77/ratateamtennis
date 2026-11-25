@@ -1160,3 +1160,62 @@ img.logo { display: block; max-width: none; }
 .team-edit { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
 .team-edit .btn { cursor: pointer; }
 .team-edit .btn.ghost { background: rgba(0,0,0,.6); }
+
+/* ---------- coach schedule & slot requests ---------- */
+/* Colours match the coach schedule sheet: dark green = court set, light green = find your own court. */
+.sched-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.sched-bar b { font-family: var(--mono); font-weight: 500; font-size: .9rem; }
+.sched-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: .8rem; color: var(--muted); margin-bottom: 14px; }
+.sched-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sched-legend i.slot { width: 14px; height: 14px; min-height: 0; padding: 0; border-radius: 4px; display: inline-block; }
+.sched-days { display: none; }
+.sched-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; align-items: start; }
+.sched-col { display: grid; gap: 4px; min-width: 0; }
+.sched-head { font-weight: 700; font-size: .85rem; padding: 6px 4px; border-bottom: 2px solid var(--line); margin-bottom: 2px; }
+.sched-col.today .sched-head { border-color: var(--ink); }
+.slot { position: relative; display: grid; gap: 1px; text-align: left; font: inherit; color: #0a0a0a; border: 0; border-radius: 8px; padding: 6px 8px; min-height: 52px; font-size: .78rem; line-height: 1.25; width: 100%; }
+button.slot { cursor: pointer; transition: transform .1s, box-shadow .1s; }
+button.slot:hover { transform: translateY(-1px); box-shadow: 0 0 0 2px #fff; }
+.slot b { font-size: .82rem; }
+.slot-time { font-family: var(--mono); font-size: .7rem; opacity: .8; }
+.slot-sub { opacity: .85; overflow-wrap: anywhere; }
+.slot.fixed { background: #146247; color: #fff; }
+.slot.find { background: #bdf377; }
+.slot.find.priv { background: repeating-linear-gradient(135deg, #bdf377 0 10px, #d4f7a3 10px 20px); }
+.slot.blocked { background: #f5b3b3; }
+.slot.kuyy { background: #ffe38a; }
+.slot.na { background: #2a2e2c; color: #9aa39f; }
+.slot.off { background: #1e2220; color: #7c8581; }
+.slot.booked { background: #8c1d18; color: #fff; }
+.slot.mine { box-shadow: 0 0 0 2px #fff inset; }
+.slot.mine::after { content: "●"; position: absolute; top: 4px; right: 7px; font-size: .7rem; }
+.slot.past { opacity: .35; }
+.slot-n { position: absolute; top: 4px; right: 6px; font-style: normal; font-size: .7rem; font-weight: 800; background: #000; color: #fff; border-radius: 999px; padding: 0 6px; }
+@media (max-width: 860px) {
+  .sched-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 10px; }
+  .sched-days button { border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 10px; padding: 6px 0; font: inherit; font-size: .75rem; display: grid; cursor: pointer; }
+  .sched-days button b { font-size: 1.05rem; }
+  .sched-days button.today { border-color: var(--muted); }
+  .sched-days button.on { background: #fff; color: #000; border-color: #fff; }
+  .sched-grid { grid-template-columns: 1fr; }
+  .sched-col { display: none; }
+  .sched-grid[data-show="1"] .sched-col[data-day="1"], .sched-grid[data-show="2"] .sched-col[data-day="2"], .sched-grid[data-show="3"] .sched-col[data-day="3"],
+  .sched-grid[data-show="4"] .sched-col[data-day="4"], .sched-grid[data-show="5"] .sched-col[data-day="5"], .sched-grid[data-show="6"] .sched-col[data-day="6"],
+  .sched-grid[data-show="7"] .sched-col[data-day="7"] { display: grid; }
+  .slot { grid-template-columns: 92px 1fr; align-items: center; min-height: 44px; font-size: .85rem; }
+  .slot .slot-time { grid-row: span 2; font-size: .8rem; }
+}
+.req-slot { display: grid; gap: 2px; padding: 10px 12px; border-radius: 10px; color: #0a0a0a; }
+.req-slot.fixed { background: #146247; color: #fff; }
+.req-slot.find { background: #bdf377; }
+.req-list > * + * { margin-top: 0; }
+.req-card { display: grid; grid-template-columns: 110px 1fr; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+.req-card:first-child { border-top: 0; padding-top: 0; }
+.req-when { display: grid; gap: 2px; font-size: .9rem; align-content: start; }
+.req-when span { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+.req-body { display: grid; gap: 4px; min-width: 0; }
+.req-body svg { width: 13px; height: 13px; vertical-align: -2px; margin-right: 2px; }
+.req-price { font: italic 900 1.4rem/1 var(--display); font-stretch: 70%; }
+.tag.ok { background: #1f5e3a; color: #fff; }
+.bank-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: end; }
+@media (max-width: 560px) { .bank-fields { grid-template-columns: 1fr; } .req-card { grid-template-columns: 1fr; gap: 6px; } }
