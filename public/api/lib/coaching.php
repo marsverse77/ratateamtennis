@@ -30,7 +30,7 @@ function session_attendance(int $id): array
     if (!can_take_attendance($s, $u)) {
         fail(403, 'Only the coach and admins can do this.');
     }
-    if ($s['activity'] !== 'coaching') {
+    if (!is_coaching($s['activity'])) {
         fail(409, 'Attendance is only for coaching sessions.');
     }
     $players = session_players($id);
@@ -70,7 +70,7 @@ function can_take_attendance(array $s, ?array $u): bool
 /** Attendance of a coaching session: everything for coaches and admins, only your own row for a player. */
 function attendance_out(array $s): ?array
 {
-    if ($s['activity'] !== 'coaching') {
+    if (!is_coaching($s['activity'])) {
         return null;
     }
     $u = current_user();
@@ -84,7 +84,9 @@ function attendance_out(array $s): ?array
 /** A member's coaching wallet: paid attendance, rewards earned, used and still available. */
 function coaching_wallet(int $uid): array
 {
-    $paid = (int) q("SELECT COUNT(*) FROM coaching_attendance WHERE user_id = ? AND status = 'paid'", [$uid])->fetchColumn();
+    // Only RATA's own Coaching counts toward the reward; Coaching Kids BRS is run with BRS.
+    $paid = (int) q("SELECT COUNT(*) FROM coaching_attendance a JOIN play_sessions s ON s.id = a.session_id
+                     WHERE a.user_id = ? AND a.status = 'paid' AND s.activity = 'coaching'", [$uid])->fetchColumn();
     $used = (int) q("SELECT COUNT(*) FROM reward_redemptions WHERE user_id = ? AND status <> 'cancelled'", [$uid])->fetchColumn();
     $earned = intdiv($paid, COACHING_THRESHOLD);
     return [

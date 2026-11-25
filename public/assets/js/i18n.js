@@ -98,6 +98,12 @@
     'Saved, but the banner did not upload:': 'Tersimpan, tapi banner gagal diunggah:', 'Session #': 'Sesi #', 'Match #': 'Pertandingan #',
 
     // Session types
+    'Coaching Kids BRS · kids coaching with BRS, no RATA points': 'Coaching Kids BRS · coaching anak bersama BRS, tanpa poin RATA',
+    'Coaching Kids BRS': 'Coaching Kids BRS', 'Coaching Kids BRS session': 'Sesi Coaching Kids BRS',
+    'Kids coaching with BRS · income split 35% BRS / 65% RATA': 'Coaching anak bersama BRS · pendapatan dibagi 35% BRS / 65% RATA',
+    'Coaching Kids BRS · income split 35% BRS / 65% RATA': 'Coaching Kids BRS · pendapatan dibagi 35% BRS / 65% RATA',
+    'Profit sharing': 'Bagi hasil', 'Profit sharing · Coaching Kids BRS': 'Bagi hasil · Coaching Kids BRS', 'Received': 'Diterima',
+    'Includes proofs still to check:': 'Termasuk bukti yang belum dicek:', 'Open in finance recap': 'Buka di rekap keuangan',
     'Session · Play Session': 'Sesi · Play Session', 'Coaching': 'Coaching', 'Hitting Session': 'Hitting Session', 'Tournament': 'Turnamen', 'Tournaments': 'Turnamen',
     '+1 RATA point for attending and every match won': '+1 poin RATA untuk hadir dan setiap menang', 'RATA points by final placement': 'Poin RATA dari peringkat akhir',
     'Sign up together; points from approved results': 'Daftar bersama; poin dari hasil yang disetujui', 'Attendance for rewards, no points': 'Kehadiran untuk reward, tanpa poin',
