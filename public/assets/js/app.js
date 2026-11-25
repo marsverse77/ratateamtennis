@@ -199,7 +199,7 @@
 
   // Session card artwork when the admin hasn't uploaded a banner: the wordmark, the session type and its title.
   function posterArt(s) {
-    const kind = { mabar: 'Play session', mini: 'Internal tournament', external: 'External tournament', coaching: 'Coaching session', hitting: 'Hitting session' }[s.activity] || 'Session';
+    const kind = { mabar: 'Play session', mini: 'Internal tournament', external: 'External tournament', coaching: 'Coaching session', kids_brs: 'Coaching Kids BRS session', hitting: 'Hitting session' }[s.activity] || 'Session';
     return `<div class="poster">${LOGO}<small>${esc(kind)}</small><b>${esc(s.title)}</b></div>`;
   }
 
@@ -290,12 +290,14 @@
 
   const PLACEMENT_LABEL = 'Final placement match · No RATA points';
   // Session types. The stored keys stay mabar / mini; members see Play Session and Internal Tournament.
-  const ACTIVITY = { mabar: 'Play Session', mini: 'Internal Tournament', external: 'External Tournament', coaching: 'Coaching', hitting: 'Hitting Session' };
+  const ACTIVITY = { mabar: 'Play Session', mini: 'Internal Tournament', external: 'External Tournament', coaching: 'Coaching', kids_brs: 'Coaching Kids BRS', hitting: 'Hitting Session' };
+  const isCoaching = (a) => a === 'coaching' || a === 'kids_brs';
   const SESSION_TYPES = {
     mabar: '+1 RATA point for attending and every match won',
     mini: 'RATA points by final placement',
     external: 'Sign up together; points from approved results',
     coaching: 'Attendance for rewards, no points',
+    kids_brs: 'Kids coaching with BRS · income split 35% BRS / 65% RATA',
     hitting: 'Practice with partners, no points',
   };
   const activityTag = (s) => `<span class="tag act-${esc(s.activity || 'mabar')}">${esc(ACTIVITY[s.activity] || ACTIVITY.mabar)}</span>`;
@@ -631,9 +633,9 @@
             <li>${ICON.court}${s.courts} court${s.courts > 1 ? 's' : ''}</li>
             <li>${ICON.person}${s.joined} / ${s.max_players} joined${s.waiting ? ` · ${s.waiting} waiting` : ''}</li>
             <li>${ICON.cash}${s.fee ? esc(rupiah(s.fee)) + ' per player' : 'Free'}</li>
-            ${s.coaches && s.coaches.length ? `<li>${ICON.person}Coach${s.coaches.length > 1 ? 'es' : ''}: ${s.coaches.map((c) => c.id ? `<a href="#/members/${c.id}" style="color:inherit">${esc(c.name)}</a>` : esc(c.name)).join(', ')}${s.activity === 'coaching' && !s.with_games ? ' · drills, no games' : ''}</li>` : ''}
+            ${s.coaches && s.coaches.length ? `<li>${ICON.person}Coach${s.coaches.length > 1 ? 'es' : ''}: ${s.coaches.map((c) => c.id ? `<a href="#/members/${c.id}" style="color:inherit">${esc(c.name)}</a>` : esc(c.name)).join(', ')}${isCoaching(s.activity) && !s.with_games ? ' · drills, no games' : ''}</li>` : ''}
             ${s.hitting ? `<li>${ICON.people}${esc(s.hitting.format)} · ${esc(s.hitting.level)}</li><li>${ICON.ball}${esc(s.hitting.partners)} · ${esc(s.hitting.balls)}</li>` : ''}
-            ${s.activity === 'hitting' ? `<li>${ICON.trophy}Hitting Session · no RATA points</li>` : s.activity === 'coaching' ? `<li>${ICON.trophy}Coaching · paid sessions count toward a free reward every 30</li>`
+            ${s.activity === 'hitting' ? `<li>${ICON.trophy}Hitting Session · no RATA points</li>` : s.activity === 'kids_brs' ? `<li>${ICON.trophy}${isAdmin() ? 'Coaching Kids BRS · income split 35% BRS / 65% RATA' : 'Coaching Kids BRS · kids coaching with BRS, no RATA points'}</li>` : s.activity === 'coaching' ? `<li>${ICON.trophy}Coaching · paid sessions count toward a free reward every 30</li>`
               : s.activity === 'external' ? `<li>${ICON.trophy}External Tournament · RATA points from the result you submit after the event</li>`
               : `<li>${ICON.trophy}${esc(scoreTargetText(s))}${s.counts_overall ? (s.activity === 'mini' ? ' · RATA points by final placement' : ' · +1 RATA point for attending and per match won') : ''}</li>`}
             ${s.location ? `<li>${ICON.pin}${esc(s.location)}</li>` : ''}
@@ -677,6 +679,7 @@
           <aside class="stack">
             ${s.fee ? (state.user ? bankCard(s, d) : `<div class="card pad bank-card"><div class="small muted">Registration fee</div><div class="fee-big">${esc(rupiah(s.fee))}</div><a class="btn dark" href="#/login" style="width:100%">Log in to request to join</a></div>`) : ''}
             ${placementsCard(d)}
+            ${profitShareCard(d)}
             ${attendanceCard(d)}
             ${externalSessionCard(d)}
             ${!s.with_games ? '' : `<div class="card pad">
@@ -1124,6 +1127,18 @@
       .map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
   }
 
+  // Coaching Kids BRS (admins): the money received so far, split 35% BRS / 65% RATA.
+  function shareRows(p) {
+    return `<div class="share-split"><div><span>BRS · ${p.brs_pct}%</span><b>${esc(rupiah(p.brs))}</b></div><div><span>RATA · ${p.rata_pct}%</span><b>${esc(rupiah(p.rata))}</b></div></div>`;
+  }
+  function profitShareCard(d) {
+    const p = d.profit_share;
+    if (!p) return '';
+    return `<div class="card pad stack"><div class="spread"><h3>Profit sharing</h3><span class="small muted"><span>Received</span> <b>${esc(rupiah(p.total))}</b></span></div>
+      ${shareRows(p)}${p.pending ? `<p class="small muted" style="margin:0"><span>Includes proofs still to check:</span> ${esc(rupiah(p.pending))}</p>` : ''}
+      <a class="small link" href="#/finance?session=${d.session.id}">Open in finance recap</a></div>`;
+  }
+
   // Coaching: the coach confirms who attended and paid; paid sessions fill the reward wallet.
   function attendanceCard(d) {
     const at = d.attendance;
@@ -1278,8 +1293,8 @@
               `<label class="${(s.coaches || []).some((c) => c.id === m.id) ? 'on' : ''}"><input type="checkbox" data-coach="${m.id}" ${(s.coaches || []).some((c) => c.id === m.id) ? 'checked' : ''}>${esc(m.name)}${m.role === 'coach' ? ' <small>coach</small>' : ''}</label>`).join('')}</div></div>
             <label class="field full coaching-only">Other coaches (not members)<input class="input" name="coach_names" maxlength="255" value="${esc((s.coaches || []).filter((c) => !c.id).map((c) => c.name).join(', '))}" placeholder="Names, separated by commas"></label>
             <fieldset class="type-pick full coaching-only games-pick"><legend>Games</legend>
-              <label><input type="radio" name="with_games" value="" ${s.id && s.activity === 'coaching' && s.with_games ? '' : 'checked'}><span><b>Drills only</b><small>No games, no schedule or scoring</small></span></label>
-              <label><input type="radio" name="with_games" value="1" ${s.id && s.activity === 'coaching' && s.with_games ? 'checked' : ''}><span><b>With games</b><small>Set the format and scoring below</small></span></label>
+              <label><input type="radio" name="with_games" value="" ${s.id && isCoaching(s.activity) && s.with_games ? '' : 'checked'}><span><b>Drills only</b><small>No games, no schedule or scoring</small></span></label>
+              <label><input type="radio" name="with_games" value="1" ${s.id && isCoaching(s.activity) && s.with_games ? 'checked' : ''}><span><b>With games</b><small>Set the format and scoring below</small></span></label>
             </fieldset>
             <div class="field full form-sub hitting-only"><b>Hitting Session</b><span class="hint">Members practise together. No games to score and no RATA points.</span></div>
             <label class="field hitting-only">Hitting format<select class="input" name="hit_format">${Object.entries(meta.hitting.format).map(([k, v]) => opt(k, s.hit_format, v)).join('')}</select></label>
@@ -1360,7 +1375,7 @@
     });
     const syncTarget = () => {
       // External Tournaments and drills-only coaching have no matches, so the scoring settings are hidden.
-      const coaching = form.activity.value === 'coaching';
+      const coaching = isCoaching(form.activity.value);
       const play = !['external', 'hitting'].includes(form.activity.value) && !(coaching && !formData(form).with_games);
       form.querySelectorAll('.hitting-only').forEach((el) => el.classList.toggle('hidden', form.activity.value !== 'hitting'));
       form.querySelectorAll('.coaching-only').forEach((el) => el.classList.toggle('hidden', !coaching));
@@ -2274,7 +2289,7 @@
     const histRow = (h) => `<a href="#/sessions/${h.session.id}">
       <div><b>${esc(fmtDate(h.session.date))}</b><div class="small muted">${esc(h.session.title)}${h.played ? ` · ${h.wins}/${h.played} won` : ''}</div></div>
       <div class="hist-right">
-        ${['coaching', 'external', 'hitting'].includes(h.session.activity) ? activityTag(h.session) : h.session.status === 'completed'
+        ${['coaching', 'kids_brs', 'external', 'hitting'].includes(h.session.activity) ? activityTag(h.session) : h.session.status === 'completed'
           ? `${h.rank && h.played ? `<span class="small muted">Session rank <b class="rank-num">#${h.rank}</b></span>` : ''}<span class="plus">+${h.points} RATA pts</span>`
           : h.session.status === 'live' ? `<span class="tag live">${h.points} pts</span>` : '<span class="tag yellow">Registered</span>'}
       </div><span class="chev">›</span></a>`;
@@ -2624,11 +2639,13 @@
         <div class="card pad"><span>Payments</span><b>${t.payments}</b></div>
         <div class="card pad"><span>Free entries</span><b>${t.free || 0}</b></div>
       </div>
+      ${d.profit_share ? `<div class="section-head"><h2>Profit sharing · Coaching Kids BRS</h2><span class="small muted"><span>Received</span> <b>${esc(rupiah(d.profit_share.total))}</b></span></div>
+      <div class="card pad" style="margin-bottom:20px">${shareRows(d.profit_share)}</div>` : ''}
       ${refundsCard(d.refunds || [])}
       <div class="section-head"><h2>By session</h2></div>
       ${d.sessions.length ? `<div class="card table-scroll"><table class="fin-table"><thead><tr><th>Date</th><th>Session</th><th class="num">Fee</th><th class="num">Paid</th><th class="num">Confirmed</th><th class="num">To check</th><th class="num">Free</th><th class="num">Total</th></tr></thead><tbody>
         ${d.sessions.map((x) => `<tr><td>${esc(fmtDate(x.date))}</td><td><a class="link" href="#/sessions/${x.id}">${esc(x.title)}</a></td><td class="num">${esc(rupiah(x.fee))}</td><td class="num">${x.paid}</td>
-          <td class="num">${esc(rupiah(x.confirmed))}</td><td class="num">${x.pending ? esc(rupiah(x.pending)) : '–'}</td><td class="num">${x.free || '–'}</td><td class="num"><b>${esc(rupiah(x.confirmed + x.pending))}</b></td></tr>`).join('')}
+          <td class="num">${esc(rupiah(x.confirmed))}</td><td class="num">${x.pending ? esc(rupiah(x.pending)) : '–'}</td><td class="num">${x.free || '–'}</td><td class="num"><b>${esc(rupiah(x.confirmed + x.pending))}</b>${x.share ? `<div class="small muted">BRS ${esc(rupiah(x.share.brs))} · RATA ${esc(rupiah(x.share.rata))}</div>` : ''}</td></tr>`).join('')}
       </tbody></table></div>` : '<div class="card empty">No payments for this filter yet.</div>'}
       ${d.payments.length ? `<div class="section-head"><h2>Payments</h2><span class="small muted">${d.payments.length}</span></div>
       <div class="card table-scroll"><table class="fin-table"><thead><tr><th>Paid at</th><th>Member</th><th>Session</th><th>Status</th><th>Method</th><th class="num">Amount</th><th></th></tr></thead><tbody>
@@ -2662,8 +2679,13 @@
       }
       if (a.dataset.act === 'csv') {
         const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-        const lines = [['Paid at', 'Member', 'Session date', 'Session', 'Status', 'Method', 'Amount'].map(cell).join(',')]
-          .concat(d.payments.map((p) => [p.paid_at, p.name, p.date, p.title, statusLabel[p.pay_status] || p.pay_status, p.method || 'transfer', p.amount].map(cell).join(',')));
+        const brs = new Set(d.sessions.filter((x) => x.share).map((x) => x.id));
+        const pct = d.profit_share ? d.sessions.find((x) => x.share).share.brs_pct : 35;
+        const lines = [['Paid at', 'Member', 'Session date', 'Session', 'Status', 'Method', 'Amount', 'BRS share', 'RATA share'].map(cell).join(',')]
+          .concat(d.payments.map((p) => {
+            const share = brs.has(p.session_id) && p.method !== 'free' ? Math.round(p.amount * pct / 100) : null;
+            return [p.paid_at, p.name, p.date, p.title, statusLabel[p.pay_status] || p.pay_status, p.method || 'transfer', p.amount, share ?? '', share === null ? '' : p.amount - share].map(cell).join(',');
+          }));
         const url = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv' }));
         const link = document.createElement('a');
         link.href = url;

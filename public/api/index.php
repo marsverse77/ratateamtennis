@@ -358,7 +358,20 @@ function session_detail(int $id): array
         'suggested_rounds' => suggested_rounds($s),
         'placements' => placements_out($s),
         'attendance' => attendance_out($s),
+        'profit_share' => $admin && $s['activity'] === 'kids_brs' ? session_profit_share($regs) : null,
     ];
+}
+
+/** Admin view of a Coaching Kids BRS session: money received so far and its 35/65 split. */
+function session_profit_share(array $regs): array
+{
+    $confirmed = $pending = 0;
+    foreach ($regs as $r) {
+        if (in_array($r['pay_status'], ['submitted', 'approved'], true) && $r['method'] !== 'free') {
+            $r['pay_status'] === 'approved' ? $confirmed += (int) $r['amount'] : $pending += (int) $r['amount'];
+        }
+    }
+    return profit_share($confirmed + $pending) + ['confirmed' => $confirmed, 'pending' => $pending];
 }
 
 function session_save(int $id): array
@@ -407,13 +420,13 @@ function session_save(int $id): array
         'bank_name' => str_in('bank_name', 60),
         'bank_account' => str_in('bank_account', 40),
         'bank_holder' => str_in('bank_holder', 100),
-        'activity' => in_array(str_in('activity', 20), ['mini', 'external', 'coaching', 'hitting'], true) ? str_in('activity', 20) : 'mabar',
+        'activity' => in_array(str_in('activity', 20), ['mini', 'external', 'coaching', 'kids_brs', 'hitting'], true) ? str_in('activity', 20) : 'mabar',
     ];
     // Coaching: its coaches (members, and names of coaches who aren't members) and drills only or with games.
     $data['coach_ids'] = '';
     $data['coach_names'] = '';
     $data['with_games'] = 1;
-    if ($data['activity'] === 'coaching') {
+    if (is_coaching($data['activity'])) {
         $ids = array_values(array_unique(array_filter(array_map('intval', (array) (input()['coach_ids'] ?? [])))));
         if ($ids && count(rows('SELECT id FROM users WHERE id IN (' . implode(',', $ids) . ')')) !== count($ids)) {
             fail(422, 'Pick the coaches from the members list.');
@@ -445,13 +458,13 @@ function session_save(int $id): array
                 $data[$k] = $old[$k];
             }
         }
-        if (in_array($data['activity'], ['coaching', 'external', 'hitting'], true)) {
+        if (in_array($data['activity'], ['coaching', 'kids_brs', 'external', 'hitting'], true)) {
             $data['counts_overall'] = 0; // coaching never enters competitive totals; external points come from approved results
         }
         update('play_sessions', $id, $data);
         sync_session_ledger($id);
     } else {
-        if (in_array($data['activity'], ['coaching', 'external', 'hitting'], true)) {
+        if (in_array($data['activity'], ['coaching', 'kids_brs', 'external', 'hitting'], true)) {
             $data['counts_overall'] = 0;
         }
         $id = insert('play_sessions', $data + ['status' => 'open', 'rounds' => 0, 'rule_version' => 2, 'created_at' => now()]);
@@ -790,7 +803,7 @@ function finance(): array
         $args[] = $sid;
     }
     $list = rows('SELECT r.id, r.user_id, r.pay_status, r.amount, r.method, r.paid_at, r.proof, u.name,
-                         s.id AS session_id, s.title, s.date, s.fee
+                         s.id AS session_id, s.title, s.date, s.fee, s.activity
                   FROM registrations r
                   JOIN play_sessions s ON s.id = r.session_id
                   JOIN users u ON u.id = r.user_id
@@ -800,7 +813,7 @@ function finance(): array
     $total = ['confirmed' => 0, 'pending' => 0, 'payments' => 0, 'free' => 0];
     foreach ($list as $r) {
         $k = (int) $r['session_id'];
-        $sessions[$k] ??= ['id' => $k, 'title' => $r['title'], 'date' => $r['date'], 'fee' => (int) $r['fee'], 'paid' => 0, 'confirmed' => 0, 'pending' => 0, 'free' => 0];
+        $sessions[$k] ??= ['id' => $k, 'title' => $r['title'], 'date' => $r['date'], 'fee' => (int) $r['fee'], 'activity' => $r['activity'], 'paid' => 0, 'confirmed' => 0, 'pending' => 0, 'free' => 0];
         if ($r['method'] === 'free') {
             // Free entries are listed but are not money in.
             $sessions[$k]['free']++;
@@ -813,8 +826,21 @@ function finance(): array
         $total[$bucket] += (int) $r['amount'];
         $total['payments']++;
     }
+    // Coaching Kids BRS: the money received is shared automatically, 35% to BRS and 65% to RATA.
+    $share = ['sessions' => 0, 'total' => 0, 'brs' => 0, 'rata' => 0, 'brs_pct' => BRS_SHARE_PCT, 'rata_pct' => 100 - BRS_SHARE_PCT];
+    foreach ($sessions as &$x) {
+        if ($x['activity'] === 'kids_brs') {
+            $x['share'] = profit_share($x['confirmed'] + $x['pending']);
+            $share['sessions']++;
+            foreach (['total', 'brs', 'rata'] as $f) {
+                $share[$f] += $x['share'][$f];
+            }
+        }
+    }
+    unset($x);
     return [
         'sessions' => array_values($sessions),
+        'profit_share' => $share['sessions'] ? $share : null,
         'payments' => array_map(fn($r) => [
             'id' => (int) $r['id'],
             'user_id' => (int) $r['user_id'],
@@ -853,6 +879,13 @@ function refund_needed(array $s, array $reg, string $name, string $reason): bool
     activity('refund', ($reason === 'removed' ? "$name was removed from " : "$name cancelled ") . $s['title']
         . ' · refund ' . rupiah_text((int) $reg['amount']) . ($reg['pay_status'] === 'submitted' ? ' (proof not checked yet)' : ''), '#/finance', true);
     return true;
+}
+
+/** Coaching Kids BRS profit sharing: 35% for BRS, 65% for RATA (RATA gets any rounding). */
+function profit_share(int $total): array
+{
+    $brs = (int) round($total * BRS_SHARE_PCT / 100);
+    return ['total' => $total, 'brs' => $brs, 'rata' => $total - $brs, 'brs_pct' => BRS_SHARE_PCT, 'rata_pct' => 100 - BRS_SHARE_PCT];
 }
 
 function rupiah_text(int $n): string

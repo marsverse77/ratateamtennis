@@ -194,6 +194,15 @@ function session_out(array $s): array
     return $s;
 }
 
+/** Coaching Kids BRS: BRS's percentage of the money received (RATA keeps the rest). */
+const BRS_SHARE_PCT = 35;
+
+/** Coaching and Coaching Kids BRS both have coaches and attendance. */
+function is_coaching(string $activity): bool
+{
+    return in_array($activity, ['coaching', 'kids_brs'], true);
+}
+
 /** Member ids of a coaching session's coaches. */
 function session_coach_ids(array $s): array
 {
@@ -203,7 +212,7 @@ function session_coach_ids(array $s): array
 /** External Tournaments and drills-only coaching have no matches. */
 function session_has_games(array $s): bool
 {
-    return !in_array($s['activity'], ['external', 'hitting'], true) && !($s['activity'] === 'coaching' && !(int) $s['with_games']);
+    return !in_array($s['activity'], ['external', 'hitting'], true) && !(is_coaching($s['activity']) && !(int) $s['with_games']);
 }
 
 function session_players(int $sid): array

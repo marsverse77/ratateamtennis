@@ -173,6 +173,11 @@ main { min-height: calc(100vh - 68px); }
 .tag.act-external { background: var(--green); color: #fff; }
 .tag.act-coaching { background: var(--soft); color: var(--ink); }
 .tag.act-hitting { background: #dbeaf5; color: #1f4e6e; }
+.tag.act-kids_brs { background: var(--soft); color: var(--ink); }
+.share-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.share-split > div { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; }
+.share-split span { color: var(--muted); font-size: .85rem; }
+.share-split b { font-size: 1.25rem; }
 .scard-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 8px; }
 
 /* session type picker (session form) */
@@ -1038,6 +1043,7 @@ h3 { font-stretch: 85%; font-weight: 800; }
 .tag.act-external { background: #000; color: #fff; box-shadow: inset 0 0 0 1px #555; }
 .tag.act-coaching { background: #2c2c2c; color: #fff; }
 .tag.act-hitting { background: #4a4a4a; color: #fff; }
+.tag.act-kids_brs { background: #2c2c2c; color: #fff; }
 .tag.done { background: var(--soft-2); color: var(--muted); }
 .tag.yellow { color: #000; }
 
