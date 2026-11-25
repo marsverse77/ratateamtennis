@@ -11,6 +11,7 @@ require __DIR__ . '/lib/audit.php';
 require __DIR__ . '/lib/scoring.php';
 require __DIR__ . '/lib/push.php';
 require __DIR__ . '/lib/chat.php';
+require __DIR__ . '/lib/booking.php';
 
 const PHOTO_DIR = __DIR__ . '/../uploads/avatars';
 const PHOTO_URL = 'uploads/avatars';
@@ -136,6 +137,11 @@ function dispatch(string $method, array $p): array
         'POST blog/image' => blog_image(),
         'GET blog/:id' => blog_detail($id),
         'POST blog/:id' => blog_save($id),
+        'GET schedule' => schedule(),
+        'POST slots/:id' => slot_edit($id),
+        'GET requests' => requests_list(),
+        'POST requests' => request_create(),
+        'POST requests/:id' => request_action($id),
         'GET push/key' => ['key' => vapid_keys()[1]],
         'POST push/subscribe' => push_subscribe(),
         'POST push/unsubscribe' => push_unsubscribe(),
@@ -262,7 +268,7 @@ function me_update(): array
 function home(): array
 {
     $today = date('Y-m-d');
-    $upcoming = rows("SELECT * FROM play_sessions WHERE status IN ('open','live') AND date >= ? ORDER BY date, start_time LIMIT 4", [$today]);
+    $upcoming = array_slice(visible_sessions(rows("SELECT * FROM play_sessions WHERE status IN ('open','live') AND date >= ? ORDER BY date, start_time LIMIT 40", [$today])), 0, 4);
     $members = rows('SELECT id, name, photo FROM users ORDER BY id LIMIT 12');
     $my = my_registrations();
     return [
@@ -293,8 +299,8 @@ function my_registrations(): array
 function sessions_list(): array
 {
     $today = date('Y-m-d');
-    $upcoming = rows("SELECT * FROM play_sessions WHERE status <> 'completed' AND (date >= ? OR status = 'live') ORDER BY date, start_time", [$today]);
-    $past = rows("SELECT * FROM play_sessions WHERE status = 'completed' OR (date < ? AND status <> 'live') ORDER BY date DESC, start_time DESC LIMIT 100", [$today]);
+    $upcoming = visible_sessions(rows("SELECT * FROM play_sessions WHERE status <> 'completed' AND (date >= ? OR status = 'live') ORDER BY date, start_time", [$today]));
+    $past = visible_sessions(rows("SELECT * FROM play_sessions WHERE status = 'completed' OR (date < ? AND status <> 'live') ORDER BY date DESC, start_time DESC LIMIT 100", [$today]));
     ['mine' => $mine, 'waiting' => $waiting] = my_registrations();
     return [
         'upcoming' => array_map('session_out', $upcoming),
@@ -307,6 +313,13 @@ function sessions_list(): array
 }
 
 // ---- sessions ----
+
+/** Drops private (requested) sessions the signed-in member isn't part of. */
+function visible_sessions(array $list): array
+{
+    $u = current_user();
+    return array_values(array_filter($list, fn($s) => !session_is_private_for($s, $u)));
+}
 
 /** Numbers the rounds 1, 2, 3… again after a round or a round's last match was removed. */
 function compact_rounds(int $sid): void
@@ -497,6 +510,8 @@ function session_delete(int $id): array
     }
     q('DELETE FROM registrations WHERE session_id = ?', [$id]);
     q('DELETE FROM chat_messages WHERE session_id = ?', [$id]);
+    // A requested slot opens again when its session is deleted.
+    q("UPDATE slot_requests SET status = 'cancelled', decided_at = ? WHERE session_id = ? AND status = 'approved'", [now(), $id]);
     foreach (rows('SELECT file FROM session_photos WHERE session_id = ?', [$id]) as $r) {
         @unlink(SESSION_PHOTO_DIR . '/' . basename($r['file']));
     }
@@ -520,6 +535,9 @@ function session_register(int $id, bool $join): array
 {
     $u = require_user();
     $s = get_session($id);
+    if ($join && session_is_private_for($s, $u)) {
+        fail(403, 'This is a private session.');
+    }
     $uid = (int) $u['id'];
     $in = row('SELECT * FROM registrations WHERE session_id = ? AND user_id = ?', [$id, $uid]);
     if ($join && !$in) {
@@ -590,6 +608,9 @@ function session_pay(int $id): array
 {
     $u = require_user();
     $s = get_session($id);
+    if (session_is_private_for($s, $u)) {
+        fail(403, 'This is a private session.');
+    }
     $uid = (int) $u['id'];
     if ((int) $s['fee'] <= 0) {
         fail(409, 'This session has no fee.');
