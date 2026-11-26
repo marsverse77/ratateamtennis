@@ -68,6 +68,7 @@ function request_out(array $r, bool $full): array
             'created_at' => $r['created_at'],
             'priced_at' => $r['priced_at'],
             'decided_at' => $r['decided_at'],
+            'quote_token' => $r['status'] === 'priced' ? booking_quote_token($r) : null,
         ];
     }
     return $out;
@@ -141,6 +142,19 @@ function schedule(): array
             $pending[] = request_out($r, true);
         }
     }
+    // An assigned session consumes the same coach capacity, whatever channel created it.
+    $visibleRequests = [];
+    foreach ($reqs as $r) {
+        if ($admin || (int) $r['user_id'] === (int) ($u['id'] ?? 0)) {
+            $visibleRequests[(int) $r['id']] = true;
+        }
+    }
+    foreach ([...coach_session_bookings($coach, $dates[0], $dates[6]), ...coach_recurring_kuyy_bookings($coach, $dates[0], $dates[6])] as $busy) {
+        $mine = $busy['request_id'] && isset($visibleRequests[$busy['request_id']]) && !$admin;
+        $booked[] = ['date' => $busy['date'], 'start' => $busy['start'], 'end' => $busy['end'], 'mine' => (bool) $mine,
+            'session_id' => $admin || $mine ? $busy['session_id'] : null]
+            + ($busy['channel'] === 'kuyy' ? ['channel' => 'kuyy'] : []);
+    }
     return [
         'coaches' => $coaches,
         'coach' => $coach,
@@ -164,14 +178,29 @@ function schedule(): array
 function slot_edit(int $id): array
 {
     require_admin();
+    return booking_write(fn() => slot_edit_locked($id));
+}
+
+function slot_edit_locked(int $id): array
+{
     $slot = row('SELECT * FROM coach_slots WHERE id = ?', [$id]) ?? fail(404, 'Slot not found.');
     $status = str_in('status', 30, true);
     if (!isset(SLOT_STATUSES[$status])) {
         fail(422, 'Unknown slot status.');
     }
     $data = ['status' => $status, 'court' => str_in('court', 100), 'program' => str_in('program', 100), 'note' => str_in('note', 255)];
+    if ($status === 'AVAILABLE_FIXED' && $data['court'] === '') {
+        fail(422, 'Set the court for a fixed-court slot.');
+    }
+    booking_validate_recurring_kuyy($slot, $data);
     audit('slot_edit', 'slot', $id, $slot, $data);
     update('coach_slots', $id, $data);
+    if ($slot['status'] !== $status || $slot['court'] !== $data['court'] || $slot['program'] !== $data['program']) {
+        // An old quote must be reviewed again after its availability/terms change. Approved/paid
+        // bookings are historical commitments and are deliberately left untouched.
+        q("UPDATE slot_requests SET status = 'requested', priced_at = NULL, priced_by = NULL
+           WHERE slot_id = ? AND status = 'priced'", [$id]);
+    }
     return ['slot' => slot_out(row('SELECT * FROM coach_slots WHERE id = ?', [$id]))];
 }
 
@@ -181,12 +210,17 @@ function times_overlap(string $a1, string $a2, string $b1, string $b2): bool
     return $a1 < $b2 && $b1 < $a2;
 }
 
-/** An accepted request for this coach that overlaps the given time, if any. */
-function slot_taken(string $coach, string $date, string $start, string $end, int $except = 0): ?array
+/** A committed private booking OR assigned session occupying this coach, if any. */
+function slot_taken(string $coach, string $date, string $start, string $end, int $except = 0, int $exceptSession = 0): ?array
 {
     foreach (rows("SELECT * FROM slot_requests WHERE coach_key = ? AND date = ? AND status = 'approved' AND id <> ?", [$coach, $date, $except]) as $r) {
         if (times_overlap($start, $end, $r['start_time'], $r['end_time'])) {
             return $r;
+        }
+    }
+    foreach (coach_session_bookings($coach, $date, $date, $exceptSession, $except) as $busy) {
+        if (times_overlap($start, $end, $busy['start'], $busy['end'])) {
+            return $busy;
         }
     }
     return null;
@@ -195,24 +229,23 @@ function slot_taken(string $coach, string $date, string $start, string $end, int
 /** Member: ask for a slot. Body: {slot_id, date, name, pax, kind, court, note} */
 function request_create(): array
 {
+    require_user();
+    return booking_write(fn() => request_create_locked());
+}
+
+function request_create_locked(): array
+{
     $u = require_user();
     $slot = row('SELECT * FROM coach_slots WHERE id = ?', [int_in('slot_id', 1, PHP_INT_MAX)]) ?? fail(404, 'Slot not found.');
-    if (!in_array($slot['status'], SLOT_OPEN, true)) {
-        fail(409, 'This time is not open for requests.');
-    }
     $date = str_in('date', 10, true);
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || (int) date('N', strtotime($date)) !== (int) $slot['day_iso']) {
-        fail(422, 'That date does not match the slot.');
-    }
-    if ($date < date('Y-m-d') || ($date === date('Y-m-d') && $slot['start_time'] <= date('H:i'))) {
-        fail(422, 'This time has already passed.');
-    }
+    booking_validate_slot($slot, $date);
     if ($date > date('Y-m-d', strtotime(monday(date('Y-m-d')) . ' +' . (SCHEDULE_WEEKS * 7 - 1) . ' days'))) {
         fail(422, 'That date is too far ahead.');
     }
     if (slot_taken($slot['coach_key'], $date, $slot['start_time'], $slot['end_time'])) {
         fail(409, 'Sorry, this time was just booked.');
     }
+    booking_validate_private_channel($slot['coach_key'], $date, $slot['start_time'], $slot['end_time']);
     if (row("SELECT id FROM slot_requests WHERE user_id = ? AND slot_id = ? AND date = ? AND status IN ('requested', 'priced')", [$u['id'], $slot['id'], $date])) {
         fail(409, 'You already requested this time. We will reply with the price soon.');
     }
@@ -221,7 +254,7 @@ function request_create(): array
         fail(422, 'Choose Hitting or Coaching.');
     }
     // A slot with a set court keeps it; otherwise the member says where they will play.
-    $court = $slot['court'] !== '' ? $slot['court'] : str_in('court', 100);
+    $court = $slot['status'] !== 'AVAILABLE_FIND_COURT' && $slot['court'] !== '' ? $slot['court'] : str_in('court', 100);
     if ($court === '') {
         fail(422, 'Tell us which court you will play on.');
     }
@@ -278,6 +311,12 @@ function requests_list(): array
  */
 function request_action(int $id): array
 {
+    require_user();
+    return booking_write(fn() => request_action_locked($id));
+}
+
+function request_action_locked(int $id): array
+{
     $u = require_user();
     $admin = $u['role'] === 'admin';
     $r = row('SELECT * FROM slot_requests WHERE id = ?', [$id]) ?? fail(404, 'Request not found.');
@@ -291,6 +330,9 @@ function request_action(int $id): array
             if (!in_array($r['status'], REQUEST_OPEN, true)) {
                 fail(409, 'This request is already closed.');
             }
+            booking_assert_no_session($id);
+            booking_request_slot($r);
+            booking_validate_private_channel($r['coach_key'], $r['date'], $r['start_time'], $r['end_time']);
             if (slot_taken($r['coach_key'], $r['date'], $r['start_time'], $r['end_time'], $id)) {
                 fail(409, 'This time is already booked by another request.');
             }
@@ -307,6 +349,7 @@ function request_action(int $id): array
             if (!in_array($r['status'], REQUEST_OPEN, true)) {
                 fail(409, 'This request is already closed.');
             }
+            booking_assert_no_session($id);
             update('slot_requests', $id, ['status' => 'rejected', 'admin_note' => $note, 'decided_at' => now()]);
             notify('Request not available', REQUEST_KINDS[$r['kind']] . ' · ' . $when . ($note !== '' ? ': ' . $note : ''), '#/schedule?requests', [(int) $r['user_id']]);
             break;
@@ -317,28 +360,23 @@ function request_action(int $id): array
             if ($r['status'] !== 'priced') {
                 fail(409, $r['status'] === 'requested' ? 'Wait for the admin to send the price first.' : 'This request is already closed.');
             }
-            if ($r['date'] < date('Y-m-d') || ($r['date'] === date('Y-m-d') && $r['start_time'] <= date('H:i'))) {
-                fail(409, 'This time has already passed.');
+            booking_assert_no_session($id);
+            if (!hash_equals(booking_quote_token($r), str_in('quote_token', 64))) {
+                fail(409, 'The offer changed or needs refreshing. Refresh and review the latest price before accepting.');
             }
-            $pdo = db();
-            $pdo->beginTransaction();
-            try {
-                if (slot_taken($r['coach_key'], $r['date'], $r['start_time'], $r['end_time'], $id)) {
-                    fail(409, 'Sorry, this time was just booked by someone else.');
+            booking_request_slot($r);
+            booking_validate_private_channel($r['coach_key'], $r['date'], $r['start_time'], $r['end_time']);
+            if (slot_taken($r['coach_key'], $r['date'], $r['start_time'], $r['end_time'], $id)) {
+                fail(409, 'Sorry, this time was just booked by someone else.');
+            }
+            $sid = request_session($r, $u);
+            update('slot_requests', $id, ['status' => 'approved', 'session_id' => $sid, 'decided_at' => now()]);
+            // Other open requests for the same coach and time can't happen any more.
+            foreach (rows("SELECT * FROM slot_requests WHERE coach_key = ? AND date = ? AND status IN ('requested', 'priced') AND id <> ?", [$r['coach_key'], $r['date'], $id]) as $o) {
+                if (times_overlap($r['start_time'], $r['end_time'], $o['start_time'], $o['end_time'])) {
+                    update('slot_requests', (int) $o['id'], ['status' => 'taken', 'decided_at' => now()]);
+                    notify('Time already booked', 'Your request for ' . date('D j M', strtotime($o['date'])) . ' ' . $o['start_time'] . ' was booked by someone else. Pick another time.', '#/schedule?requests', [(int) $o['user_id']]);
                 }
-                $sid = request_session($r, $u);
-                update('slot_requests', $id, ['status' => 'approved', 'session_id' => $sid, 'decided_at' => now()]);
-                // Other open requests for the same coach and time can't happen any more.
-                foreach (rows("SELECT * FROM slot_requests WHERE coach_key = ? AND date = ? AND status IN ('requested', 'priced') AND id <> ?", [$r['coach_key'], $r['date'], $id]) as $o) {
-                    if (times_overlap($r['start_time'], $r['end_time'], $o['start_time'], $o['end_time'])) {
-                        update('slot_requests', (int) $o['id'], ['status' => 'taken', 'decided_at' => now()]);
-                        notify('Time already booked', 'Your request for ' . date('D j M', strtotime($o['date'])) . ' ' . $o['start_time'] . ' was booked by someone else. Pick another time.', '#/schedule?requests', [(int) $o['user_id']]);
-                    }
-                }
-                $pdo->commit();
-            } catch (Throwable $e) {
-                $pdo->rollBack();
-                throw $e;
             }
             activity('request', $u['name'] . ' accepted ' . rupiah_text((int) $r['price']) . ' for ' . REQUEST_KINDS[$r['kind']] . ' · ' . $when, "#/sessions/$sid", true);
             return ['request' => request_out(request_rows('r.id = ?', [$id])[0], true), 'session_id' => $sid];
@@ -350,6 +388,7 @@ function request_action(int $id): array
             if (!in_array($r['status'], $action === 'decline' ? ['priced'] : REQUEST_OPEN, true)) {
                 fail(409, 'This request is already closed.');
             }
+            booking_assert_no_session($id);
             update('slot_requests', $id, ['status' => $action === 'decline' ? 'declined' : 'cancelled', 'decided_at' => now()]);
             activity('request', $u['name'] . ($action === 'decline' ? ' declined the price for ' : ' cancelled their request for ') . $when, '#/requests', true);
             break;
@@ -400,6 +439,8 @@ function request_session(array $r, array $u): int
         'rounds' => 0,
         'rule_version' => 2,
         'request_id' => (int) $r['id'],
+        'schedule_coach_keys' => $r['coach_key'],
+        'schedule_channel' => 'private',
         'created_at' => now(),
     ]);
     // The member who asked holds the spot; the whole price is theirs to pay.

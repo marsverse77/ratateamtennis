@@ -1292,6 +1292,13 @@
             <div class="field full coaching-only">Coaches<div class="coach-pick">${[...memberCache.filter((m) => m.role === 'coach'), ...memberCache.filter((m) => m.role !== 'coach')].map((m) =>
               `<label class="${(s.coaches || []).some((c) => c.id === m.id) ? 'on' : ''}"><input type="checkbox" data-coach="${m.id}" ${(s.coaches || []).some((c) => c.id === m.id) ? 'checked' : ''}>${esc(m.name)}${m.role === 'coach' ? ' <small>coach</small>' : ''}</label>`).join('')}</div></div>
             <label class="field full coaching-only">Other coaches (not members)<input class="input" name="coach_names" maxlength="255" value="${esc((s.coaches || []).filter((c) => !c.id).map((c) => c.name).join(', '))}" placeholder="Names, separated by commas"></label>
+            <div class="field full"><b>Reserve coach schedule</b><span class="hint">Select each coach working at this session. Degung &amp; Jordy share one schedule. These times cannot also be booked privately.</span>
+              <div class="coach-pick">${(meta.coach_schedules || []).map((c) => `<label><input type="checkbox" data-schedule-coach="${esc(c.key)}" ${(s.schedule_coach_keys || []).includes(c.key) ? 'checked' : ''} ${id && s.request_id ? 'disabled' : ''}><span data-notr>${esc(c.name)}</span></label>`).join('')}</div>
+            </div>
+            <label class="field full">Assignment type<select class="input" name="schedule_channel" ${id && s.request_id ? 'disabled' : ''}>
+              ${id && s.request_id ? opt('private', 'private', 'Private booking') : opt('session', s.schedule_channel || 'session', 'Standard session') + opt('kuyy', s.schedule_channel, 'Kuyy')}
+              </select><span class="hint">For Kuyy, Anjas is reserved Wednesday 19:30–21:00 or Friday 19:00–21:00 WITA. Wednesday 21:00–22:00 remains private only.</span></label>
+            ${id && s.request_id ? '<div class="field full hint">An accepted private booking keeps its confirmed time, court and coach. Cancel and create a new request to change them.</div>' : ''}
             <fieldset class="type-pick full coaching-only games-pick"><legend>Games</legend>
               <label><input type="radio" name="with_games" value="" ${s.id && isCoaching(s.activity) && s.with_games ? '' : 'checked'}><span><b>Drills only</b><small>No games, no schedule or scoring</small></span></label>
               <label><input type="radio" name="with_games" value="1" ${s.id && isCoaching(s.activity) && s.with_games ? 'checked' : ''}><span><b>With games</b><small>Set the format and scoring below</small></span></label>
@@ -1404,6 +1411,7 @@
       try {
         const body = formData(form);
         body.coach_ids = [...form.querySelectorAll('[data-coach]:checked')].map((el) => Number(el.dataset.coach));
+        body.schedule_coach_keys = [...form.querySelectorAll('[data-schedule-coach]:checked')].map((el) => el.dataset.scheduleCoach);
         if (fromId) body.copy_banners_from = fromId;
         const data = await api(id ? 'sessions/' + id : 'sessions', body);
         const sid = data.session.id;
@@ -3464,11 +3472,11 @@
     if (act === 'decline' && !confirm('Decline this price? The request is closed.')) return;
     if (act === 'cancel' && !confirm('Cancel this request?')) return;
     try {
-      const res = await api(`requests/${id}`, { action: act, note });
+      const res = await api(`requests/${id}`, { action: act, note, ...(act === 'accept' ? { quote_token: r.quote_token } : {}) });
       if (act === 'accept') { toast('Booked! Upload your transfer proof to finish.'); location.hash = '#/sessions/' + res.session_id; return; }
       toast({ reject: 'Saved. The member was notified.', decline: 'Request closed.', cancel: 'Request cancelled.' }[act]);
       done();
-    } catch (err) { toast(err.message, true); }
+    } catch (err) { toast(err.message, true); if (act === 'accept') done(); }
   }
 
   function priceModal(r, onSaved) {
@@ -3501,7 +3509,7 @@
   function requestModal(d, slot, date, onSaved) {
     const close = () => { modalRoot.innerHTML = ''; };
     const coach = d.coaches.find((c) => c.key === d.coach) || { name: '' };
-    const fixed = !!slot.court;
+    const fixed = slot.status !== 'AVAILABLE_FIND_COURT' && !!slot.court;
     modalRoot.innerHTML = `<div class="modal-bg"><div class="modal card">
       <form class="pad stack" id="reqform" style="padding:24px">
         <h2>Request this time</h2>
@@ -3575,20 +3583,21 @@
       const out = [];
       for (const s of list) {
         const prev = out[out.length - 1];
-        if (!editing && prev && !s.open && !prev.slot.open && prev.slot.status === s.status && prev.slot.program === s.program && prev.slot.court === s.court && prev.end === s.start) {
+        if (!editing && prev && !s.open && !prev.slot.open && prev.slot.status === s.status && prev.slot.program === s.program && prev.slot.court === s.court && prev.end === s.start
+          && !d.booked.some((b) => b.date === date && overlaps(prev.start, s.end, b.start, b.end))) {
           prev.end = s.end; continue;
         }
         out.push({ slot: s, start: s.start, end: s.end });
       }
       return out.map(({ slot: s, start, end }) => {
         const past = date < d.today || (date === d.today && s.start <= d.now);
-        const booked = s.open && d.booked.find((b) => b.date === date && overlaps(s.start, s.end, b.start, b.end));
+        const booked = d.booked.find((b) => b.date === date && overlaps(s.start, s.end, b.start, b.end));
         const reqs = s.open ? d.pending.filter((r) => r.date === date && r.slot_id === s.id) : [];
         const myReq = reqs.find((r) => r.mine);
         let cls = SLOT_CLASS[s.status] || 'na';
         let label = SLOT_LABEL[s.status] || s.status;
         let sub = s.open ? (s.court || 'Find your own court') : [s.court, s.program].filter((x) => x && x !== 'Off' && x !== 'Tidak tersedia').join(' · ');
-        if (booked) { cls = 'booked'; label = booked.mine ? 'Booked by you' : 'Booked'; }
+        if (booked) { cls = booked.channel === 'kuyy' ? 'kuyy' : 'booked'; label = booked.channel === 'kuyy' ? 'Kuyy' : booked.mine ? 'Booked by you' : 'Booked'; }
         else if (myReq) label = myReq.status === 'priced' ? 'Price sent' : 'Requested';
         const clickable = editing || (s.open && !booked && !past) || (booked && booked.session_id);
         const tagN = isAdmin() && reqs.length && !booked ? `<i class="slot-n">${reqs.length}</i>` : '';
