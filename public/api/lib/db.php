@@ -1,7 +1,7 @@
 <?php
 // Database connection and schema. Works with MySQL (production) and SQLite (fallback / local dev).
 
-const SCHEMA_VERSION = 29;
+const SCHEMA_VERSION = 30;
 const BACKUP_DIR = __DIR__ . '/../data/backups';
 
 function config(): array
@@ -130,6 +130,8 @@ function migrate(PDO $pdo): void
             hit_balls VARCHAR(20) NOT NULL DEFAULT '',
             with_games INT NOT NULL DEFAULT 1,
             request_id INT NULL,
+            schedule_coach_keys VARCHAR(255) NOT NULL DEFAULT '',
+            schedule_channel VARCHAR(12) NOT NULL DEFAULT '',
             created_at VARCHAR(19) NOT NULL
         )$engine",
         "CREATE TABLE IF NOT EXISTS registrations (
@@ -543,6 +545,28 @@ function migrate(PDO $pdo): void
         usort($past, fn($a, $b) => strcmp($a[4], $b[4]));
         foreach ($past as $row) {
             $add->execute($row);
+        }
+    }
+    // v30 is additive: keep every existing booking, payment and customized slot as-is.
+    // Empty values on old sessions are resolved by the compatibility adapter in booking_capacity.php.
+    if ($v >= 1 && $v < 30) {
+        foreach (['schedule_coach_keys' => "VARCHAR(255) NOT NULL DEFAULT ''", 'schedule_channel' => "VARCHAR(12) NOT NULL DEFAULT ''"] as $name => $type) {
+            // MySQL DDL commits independently. Make a retry after a partial upgrade safe.
+            $hasColumn = function () use ($pdo, $mysql, $name): bool {
+                $columns = $mysql ? $pdo->query('SHOW COLUMNS FROM play_sessions')->fetchAll()
+                    : $pdo->query('PRAGMA table_info(play_sessions)')->fetchAll();
+                return in_array($name, array_column($columns, $mysql ? 'Field' : 'name'), true);
+            };
+            if (!$hasColumn()) {
+                try {
+                    $pdo->exec("ALTER TABLE play_sessions ADD COLUMN $name $type");
+                } catch (PDOException $e) {
+                    // Another initialization may have added the same column while this one waited.
+                    if (!$hasColumn()) {
+                        throw $e;
+                    }
+                }
+            }
         }
     }
     // v29: members request coach slots (coach_slots and slot_requests are created above, slots seeded from

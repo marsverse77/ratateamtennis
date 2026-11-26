@@ -184,6 +184,8 @@ function session_out(array $s): array
         ...array_map(fn($id) => ['id' => $id, 'name' => $n[$id] ?? 'Coach'], $ids),
         ...array_map(fn($x) => ['id' => null, 'name' => $x], array_values(array_filter(array_map('trim', explode(',', (string) $s['coach_names']))))),
     ];
+    $s['schedule_coach_keys'] = session_schedule_keys($s);
+    $s['schedule_channel'] = session_schedule_channel($s);
     $s['format_label'] = FORMATS[$s['format']]['label'] ?? $s['format'];
     $s['joined'] = $counts['confirmed'];
     $s['waiting'] = $counts['waiting'];

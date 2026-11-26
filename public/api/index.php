@@ -11,6 +11,7 @@ require __DIR__ . '/lib/audit.php';
 require __DIR__ . '/lib/scoring.php';
 require __DIR__ . '/lib/push.php';
 require __DIR__ . '/lib/chat.php';
+require __DIR__ . '/lib/booking_capacity.php';
 require __DIR__ . '/lib/booking.php';
 
 const PHOTO_DIR = __DIR__ . '/../uploads/avatars';
@@ -308,6 +309,7 @@ function sessions_list(): array
         'mine' => $mine,
         'waiting' => $waiting,
         'formats' => array_map(fn($f) => $f['label'], FORMATS),
+        'coach_schedules' => coaches(),
         'hitting' => ['format' => HIT_FORMATS, 'level' => HIT_LEVELS, 'partners' => HIT_PARTNERS, 'balls' => HIT_BALLS],
     ];
 }
@@ -340,6 +342,10 @@ function compact_rounds(int $sid): void
 
 function session_detail(int $id): array
 {
+    $s = get_session($id);
+    if (session_is_private_for($s, current_user())) {
+        fail(403, 'This is a private session.');
+    }
     compact_rounds($id); // also repairs schedules that got a gap before this existed
     $s = get_session($id);
     $players = session_players($id);
@@ -390,14 +396,20 @@ function session_profit_share(array $regs): array
 function session_save(int $id): array
 {
     require_admin();
+    return booking_write(fn() => session_save_locked($id));
+}
+
+function session_save_locked(int $id): array
+{
+    $old = $id ? get_session($id) : null;
     $date = str_in('date', 10, true);
     $start = str_in('start_time', 5, true);
     $end = str_in('end_time', 5, true);
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+    if (!booking_date_valid($date)) {
         fail(422, 'Date must be YYYY-MM-DD.');
     }
-    if (!preg_match('/^\d{2}:\d{2}$/', $start) || !preg_match('/^\d{2}:\d{2}$/', $end)) {
-        fail(422, 'Times must be HH:MM.');
+    if (!booking_time_valid($start) || !booking_time_valid($end) || $start >= $end) {
+        fail(422, 'Times must be HH:MM, with the end after the start.');
     }
     $format = str_in('format', 30, true);
     if (!isset(FORMATS[$format])) {
@@ -463,8 +475,9 @@ function session_save(int $id): array
     if ($data['fee'] > 0 && $data['bank_account'] === '') {
         fail(422, 'Add the bank account number so players know where to transfer.');
     }
+    $data += session_schedule_fields($data, $old);
+    booking_validate_session($data, $old);
     if ($id) {
-        $old = get_session($id);
         if (is_frozen($old)) {
             // Frozen results: only the details (title, venue, description…) can still change.
             foreach (['format', 'scoring', 'target', 'counts_overall', 'point_system', 'games', 'no_ad', 'tb_points'] as $k) {
@@ -503,24 +516,31 @@ function session_save(int $id): array
 function session_delete(int $id): array
 {
     require_admin();
+    return booking_write(fn() => session_delete_locked($id));
+}
+
+function session_delete_locked(int $id): array
+{
     assert_not_frozen(get_session($id));
     q('DELETE FROM matches WHERE session_id = ?', [$id]);
     foreach (rows('SELECT proof FROM registrations WHERE session_id = ? AND proof IS NOT NULL', [$id]) as $r) {
-        delete_proof($r['proof']);
+        after_response(fn() => delete_proof($r['proof']));
     }
     q('DELETE FROM registrations WHERE session_id = ?', [$id]);
     q('DELETE FROM chat_messages WHERE session_id = ?', [$id]);
     // A requested slot opens again when its session is deleted.
     q("UPDATE slot_requests SET status = 'cancelled', decided_at = ? WHERE session_id = ? AND status = 'approved'", [now(), $id]);
     foreach (rows('SELECT file FROM session_photos WHERE session_id = ?', [$id]) as $r) {
-        @unlink(SESSION_PHOTO_DIR . '/' . basename($r['file']));
+        after_response(fn() => @unlink(SESSION_PHOTO_DIR . '/' . basename($r['file'])));
     }
     q('DELETE FROM session_photos WHERE session_id = ?', [$id]);
     q('DELETE FROM session_posts WHERE session_id = ?', [$id]);
     q('DELETE FROM timeline_comments WHERE session_id = ?', [$id]);
     $s = get_session($id);
-    delete_banner($s['banner_square']);
-    delete_banner($s['banner_wide']);
+    after_response(function () use ($s): void {
+        delete_banner($s['banner_square']);
+        delete_banner($s['banner_wide']);
+    });
     q('DELETE FROM play_sessions WHERE id = ?', [$id]);
     sync_session_ledger($id);
     return ['ok' => true];
